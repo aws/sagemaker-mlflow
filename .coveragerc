@@ -1,0 +1,5 @@
+[run]
+concurrency = threading
+omit = test/*
+timid = True
+disable_warnings = module-not-measured

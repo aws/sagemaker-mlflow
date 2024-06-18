@@ -1,17 +1,73 @@
-## My Project
+# SageMaker MLflow Plugin
 
-TODO: Fill this README out!
+## What does this Plugin do?
 
-Be sure to:
+This plugin generates Signature V4 headers in each outgoing request to the Amazon SageMaker with MLflow capability,
+determines the URL of capability to connect to tracking servers, and registers models to the SageMaker Model Registry.
+It generates a token with the SigV4 Algorithm that the service will use to conduct Authentication and Authorization
+using AWS IAM.
 
-* Change the title in this README
-* Edit your repository description on GitHub
+## Installation
 
-## Security
+To install this plugin, run the following command inside the directory:
+```
+pip install .
+```
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+Eventually when the plugin gets distributed, it will be installed with:
+```
+pip install sagemaker-mlflow
+```
 
-## License
+Running this will install the Auth Plugin and mlflow.
 
-This project is licensed under the Apache-2.0 License.
+To install a specific mlflow version
 
+```
+pip install .
+pip install mlflow==2.13
+```
+
+## Development details
+
+### setup.py
+
+`setup.py` Contains the primary entry points for the sdk. 
+`install_requires` Installs mlflow.
+`entry_points` Contains the entry points for the sdk. See https://mlflow.org/docs/latest/plugins.html#defining-a-plugin
+for more details.
+
+### Running tests
+
+#### Setup
+To run tests using tox, run:
+```
+pip install tox
+```
+Installing tox will enable users to run multi-environment tests. On the other hand, if
+running individual tests in a single environment, feel free to continue to use pytest instead.
+
+#### Running format checks
+```
+tox -e flake8,black-check,typing,twine
+```
+
+#### Formatting code to comply with format checks
+```
+tox -e black-format
+```
+
+#### Running unit tests
+```
+tox --skip-env "black.*|flake8|typing|twine" -- test/unit
+```
+
+#### Running integration tests
+```
+tox --skip-env "black.*|flake8|typing|twine" -- test/integration
+```
+
+#### Available test environments by default
+tox.ini contains support for py39, py310, py311, with mlflow 2.11.* and 2.12.*.
+To add test environments on tox for additional versions of python or mlflow, modify the
+environment configs in `envlist`, as well as `deps` and `depends` in `[testenv]`.

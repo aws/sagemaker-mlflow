@@ -1,0 +1,12 @@
+recursive-include sagemaker_mlflow *.py
+
+recursive-include requirements *
+
+include VERSION
+include LICENSE
+include README.md
+
+prune test
+
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
