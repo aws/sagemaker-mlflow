@@ -1,6 +1,5 @@
 import unittest
 from unittest.mock import patch, Mock
-import boto3
 from botocore.awsrequest import AWSRequest
 from requests import PreparedRequest
 
@@ -38,7 +37,8 @@ class TestAuthBoto(unittest.TestCase):
 
         url = "https://example.com/path"
         method = "GET"
-        headers = {"Connection": "keep-alive", "x-sagemaker": "woof"}
+        header_value = "test-value"
+        headers = {"Connection": "keep-alive", "x-sagemaker": header_value}
         body = None
         prepared_request = PreparedRequest()
         prepared_request.prepare(url=url, method=method, headers=headers, data=body)
@@ -46,7 +46,7 @@ class TestAuthBoto(unittest.TestCase):
         expected_headers = {
             "X-Amz-Content-SHA256": EMPTY_SHA256_HASH,
             "Connection": "keep-alive",
-            "x-sagemaker": "woof",
+            "x-sagemaker": header_value,
         }
         expected_aws_request = AWSRequest(
             method=method,

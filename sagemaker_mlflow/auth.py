@@ -22,6 +22,7 @@ import functools
 
 SERVICE_NAME = "sagemaker-mlflow"
 PAYLOAD_BUFFER = 1024 * 1024
+# Hardcode SHA256 hash for empty string to reduce latency for empty requests
 EMPTY_SHA256_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 

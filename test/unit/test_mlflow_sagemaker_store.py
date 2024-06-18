@@ -5,7 +5,7 @@ from sagemaker_mlflow.mlflow_sagemaker_store import MlflowSageMakerStore, get_ho
 
 
 TEST_VALID_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
-TEST_VALID_URL = "https://blah.com"
+TEST_VALID_URL = "https://test-site.com"
 
 class MlflowSageMakerStoreTest(TestCase):
 

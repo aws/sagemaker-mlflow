@@ -3,7 +3,7 @@ import pytest
 
 from utils.random_utils import generate_uuid, generate_random_float
 
-TEST_METRIC_NAME = "woof"
+TEST_METRIC_NAME = "test_metadata_metric"
 
 """ Test Metadata modification, ensure that requests get properly routed
     and that SigV4 header calculation works with SageMaker Mlflow.
