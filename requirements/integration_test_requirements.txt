@@ -1,0 +1,9 @@
+boto3
+coverage>=5.2,<6.2
+mlflow
+pytest
+pytest-cov
+pytest-rerunfailures
+pytest-timeout
+pytest-xdist
+scikit-learn

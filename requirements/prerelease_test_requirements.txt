@@ -1,0 +1,4 @@
+# Put mlflow in requirements because mlflow has a version dependency on packaging
+mlflow
+packaging
+pytest
