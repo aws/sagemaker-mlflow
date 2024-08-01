@@ -69,7 +69,7 @@ setup(
     ],
     # Require MLflow as a dependency of the plugin, so that plugin users can
     # simply install the plugin and then immediately use it with MLflow
-    install_requires=["boto3>=1.34", "mlflow>=2.8"],
+    install_requires=["boto3>=1.34", "mlflow-skinny>=2.8"],
     extras_require={"test": test_requirements, "test_prerelease": test_prerelease_requirements},
     python_requires=">= 3.8",
     entry_points={

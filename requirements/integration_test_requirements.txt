@@ -1,6 +1,6 @@
 boto3
 coverage>=5.2,<6.2
-mlflow
+mlflow-skinny
 pytest
 pytest-cov
 pytest-rerunfailures
