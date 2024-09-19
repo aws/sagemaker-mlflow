@@ -36,4 +36,4 @@ class AuthProvider:
         """
 
         arn = validate_and_parse_arn(get_tracking_uri())
-        return AuthBoto(arn.region)
+        return AuthBoto(arn.region, arn.maybe_assume_role_arn)

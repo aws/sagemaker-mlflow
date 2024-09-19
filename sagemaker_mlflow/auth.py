@@ -37,9 +37,12 @@ class AuthBoto(AuthBase):
         """
         session = boto3.Session()
 
+        self._assume_role_arn = None
+
         if assume_role_arn is not None:
             # Use STS to assume the provided role
-            sts_client = session.client("sts", region_name=region)
+            self._assume_role_arn = assume_role_arn
+            sts_client = session.client("sts")
             assumed_role_object = sts_client.assume_role(
                 RoleArn=assume_role_arn,
                 RoleSessionName="AuthBotoSagemakerMlFlow"
