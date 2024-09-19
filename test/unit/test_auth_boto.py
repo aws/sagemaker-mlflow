@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, Mock
+from unittest.mock import ANY, call, patch, Mock
 from botocore.awsrequest import AWSRequest
 from requests import PreparedRequest
 
@@ -24,6 +24,31 @@ class TestAuthBoto(unittest.TestCase):
         self.assertEqual(auth_boto.region, region)
         self.assertEqual(auth_boto.creds, mock_credentials)
         mock_session.assert_called_once()
+        mock_get_credentials.assert_called_once()
+
+    @patch("boto3.Session")
+    def test_init_with_assume_role_arn(self, mock_session):
+        # Arrange
+        mock_session_instance = mock_session.return_value
+        mock_get_credentials = mock_session_instance.get_credentials
+        mock_credentials = Mock()
+        mock_get_credentials.return_value = mock_credentials
+        region = "us-west-2"
+        assume_role_arn = "arn:aws:iam::0123456789:role/role-name-with-path"
+
+        # Act
+        auth_boto = AuthBoto(region, assume_role_arn)
+
+        # Assert
+        calls = [
+            call(),
+            call().client().assume_role(RoleArn='arn:aws:iam::0123456789:role/role-name-with-path', RoleSessionName='AuthBotoSagemakerMlFlow'),
+            call(aws_access_key_id=ANY, aws_secret_access_key=ANY, aws_session_token=ANY)
+        ]
+        self.assertEqual(auth_boto.region, region)
+        self.assertEqual(auth_boto.creds, mock_credentials)
+        mock_session.assert_called()
+        mock_session.assert_has_calls(calls, any_order=True)
         mock_get_credentials.assert_called_once()
 
     def test_call(self):
