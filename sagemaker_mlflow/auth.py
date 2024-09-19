@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
+from typing import Optional
 import boto3
 from requests.auth import AuthBase
 from requests.models import PreparedRequest
@@ -28,13 +29,31 @@ EMPTY_SHA256_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b785
 
 class AuthBoto(AuthBase):
 
-    def __init__(self, region: str):
-        """Constructor for Authorization Mechanism
-        :param region: AWS region eg us-west-2
+    def __init__(self, region: str, assume_role_arn: Optional[str] = None):
         """
-
+        Constructor for Authorization Mechanism
+        :param region: AWS region (e.g., us-west-2)
+        :param assume_role_arn: ARN of the role to assume (optional)
+        """
         session = boto3.Session()
-        self.creds = session.get_credentials()
+
+        if assume_role_arn is not None:
+            # Use STS to assume the provided role
+            sts_client = session.client("sts", region_name=region)
+            assumed_role_object = sts_client.assume_role(
+                RoleArn=assume_role_arn,
+                RoleSessionName="AuthBotoSagemakerMlFlow"
+            )
+            credentials = assumed_role_object['Credentials']
+            self.creds = boto3.Session(
+                aws_access_key_id=credentials['AccessKeyId'],
+                aws_secret_access_key=credentials['SecretAccessKey'],
+                aws_session_token=credentials['SessionToken']
+            ).get_credentials()
+        else:
+            # Use current session credentials
+            self.creds = session.get_credentials()
+
         self.region = region
         self.sigv4 = SigV4Auth(self.creds, SERVICE_NAME, self.region)
 
