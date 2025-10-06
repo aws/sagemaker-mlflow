@@ -3,7 +3,7 @@ from unittest import mock, TestCase
 
 from sagemaker_mlflow.auth_provider import AuthProvider
 import os
-from moto import mock_sts
+from moto import mock_aws
 
 TEST_VALID_ARN_WITH_ROLE = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw#arn:aws:iam::0123456789:role/role-name-with-path"
 
@@ -41,7 +41,7 @@ class AuthProviderTest(TestCase):
             "MLFLOW_TRACKING_URI": TEST_VALID_ARN_WITH_ROLE,
         },
     )
-    @mock_sts
+    @mock_aws
     def test_auth_provider_returns_correct_sigv4(self):
         auth_provider = AuthProvider()
         result = auth_provider.get_auth()
