@@ -102,5 +102,7 @@ def get_dns_suffix(partition: str) -> str:
     """
     if partition == "aws":
         return "aws"
+    elif partition == "aws-us-gov":
+        return "aws"
     else:
         raise MlflowSageMakerException(f"Partition {partition} Not supported.")
