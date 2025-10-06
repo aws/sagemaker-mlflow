@@ -14,7 +14,6 @@ import os
 
 TEST_VALID_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
 TEST_VALID_ARN_WITH_ROLE = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw#arn:aws:iam::0123456789:role/role-name-with-path"
-TEST_ASSUME_ROLE = "arn:aws:iam::0123456789:role/role-name-with-path"
 
 
 class MlflowSageMakerHelpersTest(TestCase):
@@ -32,8 +31,7 @@ class MlflowSageMakerHelpersTest(TestCase):
         assert result.maybe_assume_role_arn is None
 
     def test_validate_and_parse_arn_with_assume_role_arn(self):
-        arn = TEST_VALID_ARN
-        assume_role = TEST_ASSUME_ROLE
+        arn = TEST_VALID_ARN_WITH_ROLE
         result = validate_and_parse_arn(arn)
 
         assert type(result) is Arn
@@ -43,7 +41,7 @@ class MlflowSageMakerHelpersTest(TestCase):
         assert result.account == "000000000000"
         assert result.resource_type == "mlflow-tracking-server"
         assert result.resource_id == "xw"
-        assert result.maybe_assume_role_arn == assume_role
+        assert result.maybe_assume_role_arn == "arn:aws:iam::0123456789:role/role-name-with-path"
 
     def test_validate_and_parse_arn_invalid_service(self):
         arn = "arn:aws:wagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
