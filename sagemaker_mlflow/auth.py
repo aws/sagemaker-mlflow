@@ -44,14 +44,13 @@ class AuthBoto(AuthBase):
             self._assume_role_arn = assume_role_arn
             sts_client = session.client("sts")
             assumed_role_object = sts_client.assume_role(
-                RoleArn=assume_role_arn,
-                RoleSessionName="AuthBotoSagemakerMlFlow"
+                RoleArn=assume_role_arn, RoleSessionName="AuthBotoSagemakerMlFlow"
             )
-            credentials = assumed_role_object['Credentials']
+            credentials = assumed_role_object["Credentials"]
             self.creds = boto3.Session(
-                aws_access_key_id=credentials['AccessKeyId'],
-                aws_secret_access_key=credentials['SecretAccessKey'],
-                aws_session_token=credentials['SessionToken']
+                aws_access_key_id=credentials["AccessKeyId"],
+                aws_secret_access_key=credentials["SecretAccessKey"],
+                aws_session_token=credentials["SessionToken"],
             ).get_credentials()
         else:
             # Use current session credentials
@@ -91,9 +90,7 @@ class AuthBoto(AuthBase):
         # Adding back in the connection header.
         final_headers = aws_request.headers
         final_headers["Connection"] = connection_header
-        final_request = AWSRequest(
-            method=method, url=url, data=r.body, headers=final_headers
-        )
+        final_request = AWSRequest(method=method, url=url, data=r.body, headers=final_headers)
 
         return final_request.prepare()
 

@@ -42,8 +42,12 @@ class TestAuthBoto(unittest.TestCase):
         # Assert
         calls = [
             call(),
-            call().client().assume_role(RoleArn='arn:aws:iam::0123456789:role/role-name-with-path', RoleSessionName='AuthBotoSagemakerMlFlow'),
-            call(aws_access_key_id=ANY, aws_secret_access_key=ANY, aws_session_token=ANY)
+            call()
+            .client()
+            .assume_role(
+                RoleArn="arn:aws:iam::0123456789:role/role-name-with-path", RoleSessionName="AuthBotoSagemakerMlFlow"
+            ),
+            call(aws_access_key_id=ANY, aws_secret_access_key=ANY, aws_session_token=ANY),
         ]
         self.assertEqual(auth_boto.region, region)
         self.assertEqual(auth_boto.creds, mock_credentials)
@@ -96,9 +100,7 @@ class TestAuthBoto(unittest.TestCase):
         region = "us-west-2"
         auth_boto = AuthBoto(region)
         request_body = b"test_body"
-        expected_hash = (
-            "4443c6a8412e6c11f324c870a8366d6ede75e7f9ed12f00c36b88d479df371d6"
-        )
+        expected_hash = "4443c6a8412e6c11f324c870a8366d6ede75e7f9ed12f00c36b88d479df371d6"
 
         # Act
         result = auth_boto.get_request_body_header(request_body)

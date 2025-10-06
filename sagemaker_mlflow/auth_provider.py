@@ -17,6 +17,7 @@ from sagemaker_mlflow.mlflow_sagemaker_helpers import validate_and_parse_arn
 
 AWS_SIGV4_PLUGIN_NAME = "arn"
 
+
 class AuthProvider:
     """Entry Point class to using the plugin. mlflow will call get_name
     to determine the name of the plugin. get_auth will be called

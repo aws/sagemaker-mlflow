@@ -18,12 +18,13 @@ import logging
 
 TRACKING_SERVER_ARN_AND_ROLE_ARN_SEPERATOR = "#"
 
-class Arn:
 
-    """ Constructor for Arn Object
-        Args:
-            tracking_server_arn (str): Tracking Server Arn
+class Arn:
+    """Constructor for Arn Object
+    Args:
+        tracking_server_arn (str): Tracking Server Arn
     """
+
     def __init__(self, arn: str):
 
         self._assume_role_arn = None
@@ -49,13 +50,10 @@ class Arn:
     def maybe_assume_role_arn(self) -> Optional[str]:
         if self._assume_role_arn:
             arn = self.__class__(self._assume_role_arn)
-            if (
-                arn.service != "iam"
-                or not arn.resource_type
-                or not arn.resource_id
-            ):
+            if arn.service != "iam" or not arn.resource_type or not arn.resource_id:
                 raise MlflowSageMakerException(f"{self._assume_role_arn} is not a valid arn")
         return self._assume_role_arn
+
 
 def validate_and_parse_arn(tracking_server_arn: str) -> Arn:
     """Validates and returns an arn from a string.
@@ -66,13 +64,10 @@ def validate_and_parse_arn(tracking_server_arn: str) -> Arn:
         Arn: Arn Object
     """
     arn = Arn(tracking_server_arn)
-    if (
-        arn.service != "sagemaker"
-        or not arn.resource_type
-        or not arn.resource_id
-    ):
+    if arn.service != "sagemaker" or not arn.resource_type or not arn.resource_id:
         raise MlflowSageMakerException(f"{tracking_server_arn} is not a valid arn")
     return arn
+
 
 def get_tracking_server_url(tracking_server_arn: str) -> str:
     """Returns the url used by SageMaker MLflow

@@ -19,7 +19,7 @@ from sagemaker_mlflow.mlflow_sagemaker_helpers import validate_and_parse_arn
 
 
 def get_presigned_url(url_expiration_duration=300, session_duration=5000) -> str:
-    """ Creates a presigned url
+    """Creates a presigned url
 
     :param url_expiration_duration: First use expiration time of the presigned url
     :param session_duration: Session duration of the presigned url
@@ -45,9 +45,7 @@ def get_presigned_url(url_expiration_duration=300, session_duration=5000) -> str
     if not custom_endpoint:
         sagemaker_client = session.client("sagemaker", region_name=arn.region)
     else:
-        sagemaker_client = session.client(
-            "sagemaker", endpoint_url=custom_endpoint, region_name=arn.region
-        )
+        sagemaker_client = session.client("sagemaker", endpoint_url=custom_endpoint, region_name=arn.region)
 
     config = {
         "TrackingServerName": arn.resource_id,

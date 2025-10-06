@@ -1,6 +1,11 @@
 import unittest
 
-from sagemaker_mlflow.mlflow_sagemaker_helpers import validate_and_parse_arn, get_tracking_server_url, get_dns_suffix, Arn
+from sagemaker_mlflow.mlflow_sagemaker_helpers import (
+    validate_and_parse_arn,
+    get_tracking_server_url,
+    get_dns_suffix,
+    Arn,
+)
 from sagemaker_mlflow.exceptions import MlflowSageMakerException
 from unittest import TestCase
 from unittest import mock
@@ -9,6 +14,7 @@ import os
 
 TEST_VALID_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
 TEST_VALID_ARN_WITH_ROLE = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw#arn:aws:iam::0123456789:role/role-name-with-path"
+TEST_ASSUME_ROLE = "arn:aws:iam::0123456789:role/role-name-with-path"
 
 
 class MlflowSageMakerHelpersTest(TestCase):
@@ -26,7 +32,8 @@ class MlflowSageMakerHelpersTest(TestCase):
         assert result.maybe_assume_role_arn is None
 
     def test_validate_and_parse_arn_with_assume_role_arn(self):
-        arn = TEST_VALID_ARN_WITH_ROLE
+        arn = TEST_VALID_ARN
+        assume_role = TEST_ASSUME_ROLE
         result = validate_and_parse_arn(arn)
 
         assert type(result) is Arn
@@ -36,7 +43,7 @@ class MlflowSageMakerHelpersTest(TestCase):
         assert result.account == "000000000000"
         assert result.resource_type == "mlflow-tracking-server"
         assert result.resource_id == "xw"
-        assert result.maybe_assume_role_arn == "arn:aws:iam::0123456789:role/role-name-with-path"
+        assert result.maybe_assume_role_arn == assume_role
 
     def test_validate_and_parse_arn_invalid_service(self):
         arn = "arn:aws:wagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
@@ -54,9 +61,7 @@ class MlflowSageMakerHelpersTest(TestCase):
 
     @mock.patch.dict(
         os.environ,
-        {
-            "SAGEMAKER_MLFLOW_CUSTOM_ENDPOINT": "https://a.com"
-        },
+        {"SAGEMAKER_MLFLOW_CUSTOM_ENDPOINT": "https://a.com"},
     )
     def test_get_tracking_server_url_custom(self):
         url = get_tracking_server_url(TEST_VALID_ARN)
