@@ -29,12 +29,13 @@ def get_presigned_url(url_expiration_duration=300, session_duration=5000) -> str
     """
     arn = validate_and_parse_arn(mlflow.get_tracking_uri())
     custom_endpoint = os.environ.get("SAGEMAKER_ENDPOINT_URL", "")
+    assume_role_arn = os.environ.get("SAGEMAKER_MLFLOW_ASSUME_ROLE_ARN")
 
     session = boto3.Session()
-    if arn.maybe_assume_role_arn is not None:
+    if assume_role_arn is not None:
         sts_client = session.client("sts")
         assumed_role_object = sts_client.assume_role(
-            RoleArn=arn.maybe_assume_role_arn, RoleSessionName="AuthBotoSagemakerMlFlow"
+            RoleArn=assume_role_arn, RoleSessionName="AuthBotoSagemakerMlFlow"
         )
         credentials = assumed_role_object["Credentials"]
         session = boto3.Session(
