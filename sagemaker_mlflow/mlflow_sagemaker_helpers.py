@@ -11,16 +11,18 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
+from typing import Optional
 from sagemaker_mlflow.exceptions import MlflowSageMakerException
 import os
 import logging
 
-class Arn:
 
-    """ Constructor for Arn Object
-        Args:
-            tracking_server_arn (str): Tracking Server Arn
+class Arn:
+    """Constructor for Arn Object
+    Args:
+        tracking_server_arn (str): Tracking Server Arn
     """
+
     def __init__(self, arn: str):
         splitted_arn = arn.split(":")
         self.partition = splitted_arn[1]
@@ -29,6 +31,19 @@ class Arn:
         self.account = splitted_arn[4]
         self.resource_type = splitted_arn[5].split("/")[0]
         self.resource_id = splitted_arn[5].split("/")[1]
+
+    @property
+    def maybe_assume_role_arn(self) -> Optional[str]:
+        assume_role_arn = os.environ.get("SAGEMAKER_MLFLOW_ASSUME_ROLE_ARN")
+        if assume_role_arn:
+            # Validate the assume role ARN
+            try:
+                arn = self.__class__(assume_role_arn)
+                if arn.service != "iam" or not arn.resource_type or not arn.resource_id:
+                    raise MlflowSageMakerException(f"{assume_role_arn} is not a valid arn")
+            except (IndexError, AttributeError):
+                raise MlflowSageMakerException(f"{assume_role_arn} is not a valid arn")
+        return assume_role_arn
 
 
 def validate_and_parse_arn(tracking_server_arn: str) -> Arn:
@@ -40,13 +55,10 @@ def validate_and_parse_arn(tracking_server_arn: str) -> Arn:
         Arn: Arn Object
     """
     arn = Arn(tracking_server_arn)
-    if (
-        arn.service != "sagemaker"
-        or not arn.resource_type
-        or not arn.resource_id
-    ):
+    if arn.service != "sagemaker" or not arn.resource_type or not arn.resource_id:
         raise MlflowSageMakerException(f"{tracking_server_arn} is not a valid arn")
     return arn
+
 
 def get_tracking_server_url(tracking_server_arn: str) -> str:
     """Returns the url used by SageMaker MLflow

@@ -2,3 +2,4 @@
 mlflow
 packaging
 pytest
+moto

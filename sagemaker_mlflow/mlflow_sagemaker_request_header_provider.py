@@ -15,6 +15,7 @@
 from mlflow.tracking.request_header.abstract_request_header_provider import RequestHeaderProvider
 from mlflow import get_tracking_uri
 
+
 class MlflowSageMakerRequestHeaderProvider(RequestHeaderProvider):
     """RequestHeaderProvider provided through plugin system"""
 
@@ -28,4 +29,6 @@ class MlflowSageMakerRequestHeaderProvider(RequestHeaderProvider):
         Returns:
             dict: Dictionary containing the headers that are needed for routing.
         """
-        return { "x-mlflow-sm-tracking-server-arn": get_tracking_uri() }
+        return {
+            "x-mlflow-sm-tracking-server-arn": get_tracking_uri()
+        }

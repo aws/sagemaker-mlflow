@@ -14,8 +14,10 @@
 from sagemaker_mlflow.auth import AuthBoto
 from mlflow import get_tracking_uri
 from sagemaker_mlflow.mlflow_sagemaker_helpers import validate_and_parse_arn
+import os
 
 AWS_SIGV4_PLUGIN_NAME = "arn"
+
 
 class AuthProvider:
     """Entry Point class to using the plugin. mlflow will call get_name
@@ -36,4 +38,5 @@ class AuthProvider:
         """
 
         arn = validate_and_parse_arn(get_tracking_uri())
-        return AuthBoto(arn.region)
+        assume_role_arn = os.environ.get("SAGEMAKER_MLFLOW_ASSUME_ROLE_ARN")
+        return AuthBoto(arn.region, assume_role_arn)
