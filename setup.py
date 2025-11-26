@@ -55,7 +55,7 @@ setup(
     packages=find_packages(),
     author="Amazon Web Services",
     license="Apache License 2.0",
-    url = 'https://github.com/aws/sagemaker-mlflow',
+    url="https://github.com/aws/sagemaker-mlflow",
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
@@ -66,6 +66,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     # Require MLflow as a dependency of the plugin, so that plugin users can
     # simply install the plugin and then immediately use it with MLflow
@@ -75,8 +76,12 @@ setup(
     entry_points={
         "mlflow.tracking_store": "arn=sagemaker_mlflow.mlflow_sagemaker_store:MlflowSageMakerStore",
         "mlflow.request_auth_provider": "arn=sagemaker_mlflow.auth_provider:AuthProvider",
-        "mlflow.request_header_provider": "arn=sagemaker_mlflow.mlflow_sagemaker_request_header_provider:MlflowSageMakerRequestHeaderProvider",
-        "mlflow.model_registry_store": "arn=sagemaker_mlflow.mlflow_sagemaker_registry_store:MlflowSageMakerRegistryStore"
+        "mlflow.request_header_provider": (
+            "arn=sagemaker_mlflow.mlflow_sagemaker_request_header_provider:" "MlflowSageMakerRequestHeaderProvider"
+        ),
+        "mlflow.model_registry_store": (
+            "arn=sagemaker_mlflow.mlflow_sagemaker_registry_store:" "MlflowSageMakerRegistryStore"
+        ),
     },
     version=read_version(),
     description="AWS Plugin for MLflow with SageMaker",

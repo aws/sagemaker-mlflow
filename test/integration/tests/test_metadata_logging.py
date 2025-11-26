@@ -8,6 +8,8 @@ TEST_METRIC_NAME = "test_metadata_metric"
 """ Test Metadata modification, ensure that requests get properly routed
     and that SigV4 header calculation works with SageMaker Mlflow.
 """
+
+
 class TestMetadataLogging:
 
     @pytest.fixture(scope="class")
@@ -21,9 +23,7 @@ class TestMetadataLogging:
         metric_value = generate_random_float()
 
         run = mlflow_client.create_run("0", tags=tags)
-        mlflow_client.log_metric(
-            run.info.run_id, TEST_METRIC_NAME, metric_value, step=0
-        )
+        mlflow_client.log_metric(run.info.run_id, TEST_METRIC_NAME, metric_value, step=0)
         metric = list(mlflow_client.get_metric_history(run.info.run_id, TEST_METRIC_NAME))[0]
 
         assert "s3" in run.info.artifact_uri

@@ -23,7 +23,7 @@ class TestAuthBoto(unittest.TestCase):
         region = "us-west-2"
 
         # Act
-        auth_boto = AuthBoto(region)
+        auth_boto = AuthBoto(region, "service_name")
 
         # Assert
         self.assertEqual(auth_boto.region, region)
@@ -42,7 +42,7 @@ class TestAuthBoto(unittest.TestCase):
         assume_role_arn = "arn:aws:iam::0123456789:role/role-name-with-path"
 
         # Act
-        auth_boto = AuthBoto(region, assume_role_arn)
+        auth_boto = AuthBoto(region, "sagemaker", assume_role_arn)
 
         # Assert
         calls = [
@@ -63,7 +63,7 @@ class TestAuthBoto(unittest.TestCase):
     def test_call(self):
         # Arrange
         region = "us-west-2"
-        auth_boto = AuthBoto(region)
+        auth_boto = AuthBoto(region, "service_name")
 
         mock_sigv4 = Mock()
         auth_boto.sigv4 = mock_sigv4
@@ -103,7 +103,7 @@ class TestAuthBoto(unittest.TestCase):
     def test_get_request_body_header(self):
         # Arrange
         region = "us-west-2"
-        auth_boto = AuthBoto(region)
+        auth_boto = AuthBoto(region, "service_name")
         request_body = b"test_body"
         expected_hash = "4443c6a8412e6c11f324c870a8366d6ede75e7f9ed12f00c36b88d479df371d6"
 
@@ -116,7 +116,7 @@ class TestAuthBoto(unittest.TestCase):
     def test_get_request_body_header_empty(self):
         # Arrange
         region = "us-west-2"
-        auth_boto = AuthBoto(region)
+        auth_boto = AuthBoto(region, "service_name")
         request_body = b""
 
         # Act
@@ -139,7 +139,7 @@ class TestAuthBoto(unittest.TestCase):
         mock_credentials = {
             "AccessKeyId": "test-access-key",
             "SecretAccessKey": "test-secret-key",
-            "SessionToken": "test-session-token"
+            "SessionToken": "test-session-token",
         }
         mock_sts_client.assume_role.return_value = {"Credentials": mock_credentials}
 
@@ -147,12 +147,11 @@ class TestAuthBoto(unittest.TestCase):
         mock_session_instance.get_credentials.return_value = Mock()
 
         # Act
-        auth_boto = AuthBoto(region, assume_role_arn)
+        AuthBoto(region, "sagemaker", assume_role_arn)
 
         # Assert - STS should be called once
         mock_sts_client.assume_role.assert_called_once_with(
-            RoleArn=assume_role_arn,
-            RoleSessionName="AuthBotoSagemakerMlFlow"
+            RoleArn=assume_role_arn, RoleSessionName="AuthBotoSagemakerMlFlow"
         )
 
     @patch("boto3.Session")
@@ -169,19 +168,19 @@ class TestAuthBoto(unittest.TestCase):
         mock_credentials = {
             "AccessKeyId": "test-access-key",
             "SecretAccessKey": "test-secret-key",
-            "SessionToken": "test-session-token"
+            "SessionToken": "test-session-token",
         }
         mock_sts_client.assume_role.return_value = {"Credentials": mock_credentials}
         mock_session_instance.get_credentials.return_value = Mock()
 
         # First call - should hit STS
-        auth_boto_1 = AuthBoto(region, assume_role_arn)
+        AuthBoto(region, "sagemaker", assume_role_arn)
 
         # Reset mock to verify second call doesn't hit STS
         mock_sts_client.reset_mock()
 
         # Second call - should use cache
-        auth_boto_2 = AuthBoto(region, assume_role_arn)
+        AuthBoto(region, "sagemaker", assume_role_arn)
 
         # Assert - STS should not be called on second initialization
         mock_sts_client.assume_role.assert_not_called()
@@ -201,14 +200,14 @@ class TestAuthBoto(unittest.TestCase):
         mock_credentials = {
             "AccessKeyId": "test-access-key",
             "SecretAccessKey": "test-secret-key",
-            "SessionToken": "test-session-token"
+            "SessionToken": "test-session-token",
         }
         mock_sts_client.assume_role.return_value = {"Credentials": mock_credentials}
         mock_session_instance.get_credentials.return_value = Mock()
 
         # Act
-        with patch.object(AuthBoto._credential_cache, 'set_credentials') as mock_set_credentials:
-            auth_boto = AuthBoto(region, assume_role_arn)
+        with patch.object(AuthBoto._credential_cache, "set_credentials") as mock_set_credentials:
+            AuthBoto(region, "sagemaker", assume_role_arn)
 
             # Assert - credentials should be cached with custom TTL
             mock_set_credentials.assert_called_once_with(assume_role_arn, mock_credentials, 1800)
@@ -227,17 +226,19 @@ class TestAuthBoto(unittest.TestCase):
         mock_credentials = {
             "AccessKeyId": "test-access-key",
             "SecretAccessKey": "test-secret-key",
-            "SessionToken": "test-session-token"
+            "SessionToken": "test-session-token",
         }
         mock_sts_client.assume_role.return_value = {"Credentials": mock_credentials}
         mock_session_instance.get_credentials.return_value = Mock()
 
         # Act
-        with patch.object(AuthBoto._credential_cache, 'set_credentials') as mock_set_credentials:
-            auth_boto = AuthBoto(region, assume_role_arn)
+        with patch.object(AuthBoto._credential_cache, "set_credentials") as mock_set_credentials:
+            AuthBoto(region, "sagemaker", assume_role_arn)
 
             # Assert - credentials should be cached with default TTL
-            mock_set_credentials.assert_called_once_with(assume_role_arn, mock_credentials, DEFAULT_CREDENTIAL_TTL_SECONDS)
+            mock_set_credentials.assert_called_once_with(
+                assume_role_arn, mock_credentials, DEFAULT_CREDENTIAL_TTL_SECONDS
+            )
 
     @patch.dict(os.environ, {"SAGEMAKER_MLFLOW_ASSUME_ROLE_TTL_SECONDS": "7200"})  # > 3600
     @patch("boto3.Session")
@@ -254,14 +255,14 @@ class TestAuthBoto(unittest.TestCase):
         mock_credentials = {
             "AccessKeyId": "test-access-key",
             "SecretAccessKey": "test-secret-key",
-            "SessionToken": "test-session-token"
+            "SessionToken": "test-session-token",
         }
         mock_sts_client.assume_role.return_value = {"Credentials": mock_credentials}
         mock_session_instance.get_credentials.return_value = Mock()
 
         # Act
-        with patch.object(AuthBoto._credential_cache, 'set_credentials') as mock_set_credentials:
-            auth_boto = AuthBoto(region, assume_role_arn)
+        with patch.object(AuthBoto._credential_cache, "set_credentials") as mock_set_credentials:
+            AuthBoto(region, "sagemaker", assume_role_arn)
 
             # Assert - TTL should be capped at 3600
             mock_set_credentials.assert_called_once_with(assume_role_arn, mock_credentials, 3600)
@@ -281,14 +282,14 @@ class TestAuthBoto(unittest.TestCase):
         mock_credentials = {
             "AccessKeyId": "test-access-key",
             "SecretAccessKey": "test-secret-key",
-            "SessionToken": "test-session-token"
+            "SessionToken": "test-session-token",
         }
         mock_sts_client.assume_role.return_value = {"Credentials": mock_credentials}
         mock_session_instance.get_credentials.return_value = Mock()
 
         # Act
-        with patch.object(AuthBoto._credential_cache, 'set_credentials') as mock_set_credentials:
-            auth_boto = AuthBoto(region, assume_role_arn)
+        with patch.object(AuthBoto._credential_cache, "set_credentials") as mock_set_credentials:
+            AuthBoto(region, "sagemaker", assume_role_arn)
 
             # Assert - TTL should be set to minimum of 300
             mock_set_credentials.assert_called_once_with(assume_role_arn, mock_credentials, 300)

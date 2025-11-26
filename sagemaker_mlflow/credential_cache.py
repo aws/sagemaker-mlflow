@@ -19,7 +19,7 @@ from typing import Optional, Dict, Any
 class CredentialCache:
     """Thread-safe TTL cache for AWS STS assumed role credentials."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
 
@@ -47,7 +47,7 @@ class CredentialCache:
 
             return cached_entry["credentials"]
 
-    def set_credentials(self, role_arn: str, credentials: Dict[str, Any], ttl_seconds: int):
+    def set_credentials(self, role_arn: str, credentials: Dict[str, Any], ttl_seconds: int) -> None:
         """
         Store credentials in the cache with a TTL.
 
@@ -59,25 +59,19 @@ class CredentialCache:
         expires_at = time.time() + ttl_seconds
 
         with self._lock:
-            self._cache[role_arn] = {
-                "credentials": credentials,
-                "expires_at": expires_at
-            }
+            self._cache[role_arn] = {"credentials": credentials, "expires_at": expires_at}
             # Clean up expired entries periodically
             self._cleanup_expired()
 
-    def _cleanup_expired(self):
+    def _cleanup_expired(self) -> None:
         """Remove expired entries from the cache to prevent memory leaks."""
         current_time = time.time()
-        expired_keys = [
-            key for key, entry in self._cache.items()
-            if current_time >= entry["expires_at"]
-        ]
+        expired_keys = [key for key, entry in self._cache.items() if current_time >= entry["expires_at"]]
 
         for key in expired_keys:
             del self._cache[key]
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all cached credentials. Useful for testing."""
         with self._lock:
             self._cache.clear()

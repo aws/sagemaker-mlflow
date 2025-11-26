@@ -10,6 +10,8 @@ import sagemaker_mlflow.presigned_url
 
 """ This test makes sure that getting the presigned url works.
 """
+
+
 class TestPresignedUrl:
 
     @pytest.fixture(scope="class")
@@ -18,7 +20,9 @@ class TestPresignedUrl:
         mlflow.set_tracking_uri(tracking_server)
 
     # Restrict to local environments for now, remove after GA.
-    @pytest.mark.skipif(os.environ.get("CODEBUILD_BUILD_ARN", "") != "", reason="Codebuild might not have the right API shape")
+    @pytest.mark.skipif(
+        os.environ.get("CODEBUILD_BUILD_ARN", "") != "", reason="Codebuild might not have the right API shape"
+    )
     def test_presigned_url(self, setup):
         presigned_url = sagemaker_mlflow.presigned_url.get_presigned_url()
         response = requests.get(url=presigned_url)

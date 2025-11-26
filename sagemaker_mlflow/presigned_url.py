@@ -15,7 +15,11 @@ import os
 
 import boto3
 import mlflow
-from sagemaker_mlflow.mlflow_sagemaker_helpers import validate_and_parse_arn
+
+from sagemaker_mlflow.exceptions import ResourceTypeUnsupportedException
+from sagemaker_mlflow.mlflow_sagemaker_helpers import SageMakerMLflowHostMetadataProvider
+
+host_metadata_provider = SageMakerMLflowHostMetadataProvider()
 
 
 def get_presigned_url(url_expiration_duration=300, session_duration=5000) -> str:
@@ -27,31 +31,40 @@ def get_presigned_url(url_expiration_duration=300, session_duration=5000) -> str
     :returns: Authorized Url
 
     """
-    arn = validate_and_parse_arn(mlflow.get_tracking_uri())
+    host_metadata_provider.set_arn(mlflow.get_tracking_uri())
+
     custom_endpoint = os.environ.get("SAGEMAKER_ENDPOINT_URL", "")
     assume_role_arn = os.environ.get("SAGEMAKER_MLFLOW_ASSUME_ROLE_ARN")
 
     session = boto3.Session()
     if assume_role_arn is not None:
         sts_client = session.client("sts")
-        assumed_role_object = sts_client.assume_role(
-            RoleArn=assume_role_arn, RoleSessionName="AuthBotoSagemakerMlFlow"
-        )
+        assumed_role_object = sts_client.assume_role(RoleArn=assume_role_arn, RoleSessionName="AuthBotoSagemakerMlFlow")
         credentials = assumed_role_object["Credentials"]
         session = boto3.Session(
             aws_access_key_id=credentials["AccessKeyId"],
             aws_secret_access_key=credentials["SecretAccessKey"],
             aws_session_token=credentials["SessionToken"],
         )
-    if not custom_endpoint:
-        sagemaker_client = session.client("sagemaker", region_name=arn.region)
-    else:
-        sagemaker_client = session.client("sagemaker", endpoint_url=custom_endpoint, region_name=arn.region)
 
-    config = {
-        "TrackingServerName": arn.resource_id,
-        "ExpiresInSeconds": url_expiration_duration,
-        "SessionExpirationDurationInSeconds": session_duration,
-    }
-    response = sagemaker_client.create_presigned_mlflow_tracking_server_url(**config)
+    if not custom_endpoint:
+        sagemaker_client = session.client("sagemaker", region_name=host_metadata_provider.region)
+    else:
+        sagemaker_client = session.client(
+            "sagemaker", endpoint_url=custom_endpoint, region_name=host_metadata_provider.region
+        )
+
+    config = {"ExpiresInSeconds": url_expiration_duration, "SessionExpirationDurationInSeconds": session_duration}
+
+    resource_type = host_metadata_provider.resource_type
+
+    if resource_type == "mlflow-tracking-server":
+        config["TrackingServerName"] = host_metadata_provider.resource_id
+        response = sagemaker_client.create_presigned_mlflow_tracking_server_url(**config)
+    elif resource_type == "mlflow-app":
+        config["Arn"] = host_metadata_provider.arn
+        response = sagemaker_client.create_presigned_mlflow_app_url(**config)
+    else:
+        raise ResourceTypeUnsupportedException(resource_type)
+
     return response["AuthorizedUrl"]

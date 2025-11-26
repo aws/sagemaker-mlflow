@@ -15,7 +15,10 @@ from mlflow.store.tracking.rest_store import RestStore
 from mlflow.utils import rest_utils
 import os
 from functools import partial
-from sagemaker_mlflow.mlflow_sagemaker_helpers import get_tracking_server_url
+
+from sagemaker_mlflow.mlflow_sagemaker_helpers import SageMakerMLflowHostMetadataProvider
+
+host_metadata_provider = SageMakerMLflowHostMetadataProvider()
 
 # Extra environment variables which take precedence for setting the basic/bearer
 # auth on http requests.
@@ -43,16 +46,16 @@ class MlflowSageMakerStore(RestStore):
 
 def get_host_creds(store_uri) -> rest_utils.MlflowHostCreds:
     """Configuring mlflow's client"""
-    tracking_server_url = get_tracking_server_url(store_uri)
+    host_metadata_provider.set_arn(store_uri)
+
     return rest_utils.MlflowHostCreds(
-        host=tracking_server_url,
+        host=host_metadata_provider.construct_tracking_server_url(),
         username=os.environ.get(_TRACKING_USERNAME_ENV_VAR),
         password=os.environ.get(_TRACKING_PASSWORD_ENV_VAR),
         token=os.environ.get(_TRACKING_TOKEN_ENV_VAR),
         auth="arn",
         # aws_sigv4="False",  # Auth provider is used instead for now
-        ignore_tls_verification=os.environ.get(_TRACKING_INSECURE_TLS_ENV_VAR)
-        == "true",
+        ignore_tls_verification=os.environ.get(_TRACKING_INSECURE_TLS_ENV_VAR) == "true",
         client_cert_path=os.environ.get(_TRACKING_CLIENT_CERT_PATH_ENV_VAR),
         server_cert_path=os.environ.get(_TRACKING_SERVER_CERT_PATH_ENV_VAR),
     )
