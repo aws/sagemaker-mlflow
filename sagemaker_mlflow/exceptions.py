@@ -14,3 +14,9 @@
 
 class MlflowSageMakerException(Exception):
     pass
+
+
+class ResourceTypeUnsupportedException(MlflowSageMakerException):
+    def __init__(self, resource_type: str):
+        message = f"Resource type {resource_type} Not supported."
+        super().__init__(message)

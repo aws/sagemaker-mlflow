@@ -5,12 +5,14 @@ import mlflow
 import pytest
 
 from utils.boto_utils import get_file_data_from_s3
-from utils.random_utils import generate_uuid, generate_random_float
+from utils.random_utils import generate_uuid
 
-""" Test that artifacts are being persisted correctly with an 
+""" Test that artifacts are being persisted correctly with an
     Amazon S3 based artifact store. This test is only for artifact
     stores in which the client goes through S3.
 """
+
+
 class TestArtifactLogging:
 
     @pytest.fixture(scope="class")

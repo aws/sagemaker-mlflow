@@ -7,6 +7,8 @@ from utils.boto_utils import get_default_region, get_account_id
 
 """ Default tracking server that a user can create
 """
+
+
 @pytest.fixture(scope="module")
 def tracking_server():
     server_arn = os.environ.get("MLFLOW_TRACKING_SERVER_URI", "")
@@ -25,6 +27,8 @@ def tracking_server():
 
 """ Mlflow Client Fixture
 """
+
+
 @pytest.fixture
 def mlflow_client() -> MlflowClient:
     return MlflowClient()

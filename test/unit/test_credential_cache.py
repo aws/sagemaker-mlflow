@@ -1,5 +1,4 @@
 import unittest
-import time
 import threading
 from unittest.mock import patch
 
@@ -14,7 +13,7 @@ class TestCredentialCache(unittest.TestCase):
         self.test_credentials = {
             "AccessKeyId": "test-access-key",
             "SecretAccessKey": "test-secret-key",
-            "SessionToken": "test-session-token"
+            "SessionToken": "test-session-token",
         }
 
     def test_cache_miss_returns_none(self):
@@ -30,7 +29,7 @@ class TestCredentialCache(unittest.TestCase):
         result = self.cache.get_credentials(self.test_role_arn)
         self.assertEqual(result, self.test_credentials)
 
-    @patch('time.time')
+    @patch("time.time")
     def test_expired_credentials_return_none(self, mock_time):
         # Set up credentials that will expire
         mock_time.return_value = 1000.0
@@ -43,7 +42,7 @@ class TestCredentialCache(unittest.TestCase):
         result = self.cache.get_credentials(self.test_role_arn)
         self.assertIsNone(result)
 
-    @patch('time.time')
+    @patch("time.time")
     def test_cleanup_expired_removes_old_entries(self, mock_time):
         # Add credentials that will expire
         mock_time.return_value = 1000.0
@@ -110,7 +109,7 @@ class TestCredentialCache(unittest.TestCase):
             credentials = {
                 "AccessKeyId": f"key-{thread_id}",
                 "SecretAccessKey": f"secret-{thread_id}",
-                "SessionToken": f"token-{thread_id}"
+                "SessionToken": f"token-{thread_id}",
             }
 
             # Set credentials
@@ -140,7 +139,7 @@ class TestCredentialCache(unittest.TestCase):
             expected_credentials = {
                 "AccessKeyId": f"key-{thread_id}",
                 "SecretAccessKey": f"secret-{thread_id}",
-                "SessionToken": f"token-{thread_id}"
+                "SessionToken": f"token-{thread_id}",
             }
             self.assertEqual(result, expected_credentials)
 

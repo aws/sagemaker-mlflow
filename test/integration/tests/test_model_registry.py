@@ -8,6 +8,8 @@ from utils.sklearn_utils import train_iris_logistic_regression_model
 
 """ This test makes sure that registering models works.
 """
+
+
 class TestModelRegistry:
 
     @pytest.fixture(scope="class")
