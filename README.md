@@ -69,8 +69,8 @@ tox --skip-env "black.*|flake8|typing|twine" -- test/integration
 
 #### Available test environments by default
 tox.ini contains support for:
-- Python 3.9: mlflow 2.8.*, 2.9.*, 2.10.*, 2.11.*, 2.12.*, 2.13.*, 2.16.*, 3.0.0
-- Python 3.10/3.11: mlflow 2.8.*, 2.9.*, 2.10.*, 2.11.*, 2.12.*, 2.13.*, 2.16.*, 3.0.0, 3.4.0
+- Python 3.10/3.11/3.12: mlflow 2.8.*, 2.9.*, 2.10.*, 2.11.*, 2.12.*, 2.13.*, 2.16.*, 3.0.0, 3.4.0
+- Python 3.13/3.14: mlflow 3.0.0, 3.4.0
 
 To add test environments on tox for additional versions of python or mlflow, modify the
 environment configs in `envlist`, as well as `deps` and `depends` in `[testenv]`.
