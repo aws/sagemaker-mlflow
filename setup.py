@@ -82,6 +82,9 @@ setup(
         "mlflow.model_registry_store": (
             "arn=sagemaker_mlflow.mlflow_sagemaker_registry_store:" "MlflowSageMakerRegistryStore"
         ),
+        "mlflow.artifact_repository": (
+            "s3=sagemaker_mlflow.s3_presigned_artifact_repo:SageMakerS3ArtifactRepository"
+        ),
     },
     version=read_version(),
     description="AWS Plugin for MLflow with SageMaker",
