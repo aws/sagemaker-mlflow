@@ -14,6 +14,7 @@
 """
 sagemaker-mlflow plugin installation.
 """
+
 import os
 
 from setuptools import setup, find_packages
@@ -81,6 +82,10 @@ setup(
         ),
         "mlflow.model_registry_store": (
             "arn=sagemaker_mlflow.mlflow_sagemaker_registry_store:" "MlflowSageMakerRegistryStore"
+        ),
+        "mlflow.scorer_store": ("arn=sagemaker_mlflow.mlflow_sagemaker_scorer_store:MlflowSageMakerScorerStore"),
+        "mlflow.workspace_provider": (
+            "arn=sagemaker_mlflow.mlflow_sagemaker_workspace_store:MlflowSageMakerWorkspaceStore"
         ),
     },
     version=read_version(),

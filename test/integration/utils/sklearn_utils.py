@@ -14,7 +14,6 @@ def train_iris_logistic_regression_model():
     params = {
         "solver": "lbfgs",
         "max_iter": 1000,
-        "multi_class": "auto",
         "random_state": 8888,
     }
 
