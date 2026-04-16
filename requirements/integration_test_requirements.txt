@@ -1,5 +1,5 @@
 boto3
-coverage>=5.2,<6.2
+coverage>=5.2
 mlflow
 pytest
 pytest-cov
