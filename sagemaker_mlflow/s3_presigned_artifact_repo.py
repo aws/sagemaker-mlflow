@@ -25,7 +25,7 @@ from sagemaker_mlflow.mlflow_sagemaker_helpers import SageMakerMLflowHostMetadat
 
 logger = logging.getLogger(__name__)
 
-_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR = "SAGEMAKER_PRESIGNED_URL_UPLOAD"
+_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR = "SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED"
 
 _TRACKING_INSECURE_TLS_ENV_VAR = "MLFLOW_TRACKING_INSECURE_TLS"
 _TRACKING_USERNAME_ENV_VAR = "MLFLOW_TRACKING_USERNAME"
@@ -37,8 +37,6 @@ _TRACKING_SERVER_CERT_PATH_ENV_VAR = "MLFLOW_TRACKING_SERVER_CERT_PATH"
 
 _PRESIGNED_UPLOAD_ENDPOINT = "/api/2.0/mlflow/artifacts/presigned-upload-url"
 
-_PERMANENT_FAILURE_CODES = (404, 501)
-
 
 class S3PresignedArtifactRepository(S3ArtifactRepository):
     """S3 artifact repository with optional presigned URL upload support.
@@ -47,16 +45,14 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
     obtained from the MLflow tracking server. This avoids the need for the client
     to have direct S3 write credentials.
 
-    When the SAGEMAKER_PRESIGNED_URL_UPLOAD environment variable is set to "true",
-    artifact uploads will first attempt to use presigned URLs. If the server does
-    not support the presigned upload endpoint, the class falls back to direct S3
-    uploads transparently.
+    When the SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED environment variable is set to
+    "true", all artifact uploads use presigned URLs. If the presigned upload fails
+    for any reason (server doesn't support the endpoint, network error, S3 PUT
+    failure), the exception propagates to the caller — there is no silent fallback
+    to direct S3.
 
-    Failure handling:
-        - 404/501 from the tracking server: permanently cached as unsupported,
-          all subsequent uploads use direct S3.
-        - 503 or PUT failures: treated as transient, presigned upload retried
-          on the next call.
+    When the environment variable is not set (the default), all behavior is
+    identical to the parent S3ArtifactRepository.
     """
 
     def __init__(self, *args, **kwargs):
@@ -64,25 +60,21 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         self._use_presigned: bool = (
             os.environ.get(_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR, "").lower() == "true"
         )
-        self._presigned_supported: Optional[bool] = None
+        self._run_id_warning_logged: bool = False
 
     def _should_use_presigned(self) -> bool:
         """Check whether presigned upload should be attempted for this call."""
         return (
             self._use_presigned
-            and self._presigned_supported is not False
             and self.tracking_uri is not None
             and self._extract_run_id() is not None
         )
 
     def log_artifact(self, local_file: str, artifact_path: Optional[str] = None) -> None:
         if self._should_use_presigned():
-            try:
-                self._upload_via_presigned_url(local_file, artifact_path)
-                return
-            except Exception:
-                logger.debug("Presigned upload attempt failed; falling back to direct S3", exc_info=True)
-        super().log_artifact(local_file, artifact_path)
+            self._upload_via_presigned_url(local_file, artifact_path)
+        else:
+            super().log_artifact(local_file, artifact_path)
 
     def log_artifacts(self, local_dir: str, artifact_path: Optional[str] = None) -> None:
         if not self._should_use_presigned():
@@ -121,7 +113,20 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
                 if parts[i] == "artifacts":
                     return parts[i - 1]
         except Exception:
-            pass
+            if self._use_presigned and not self._run_id_warning_logged:
+                self._run_id_warning_logged = True
+                logger.warning(
+                    "Failed to parse run_id from artifact URI: %s",
+                    self.artifact_uri, exc_info=True,
+                )
+            return None
+        if self._use_presigned and not self._run_id_warning_logged:
+            self._run_id_warning_logged = True
+            logger.warning(
+                "Could not extract run_id from artifact URI (no 'artifacts' segment): %s. "
+                "Presigned upload will not be used.",
+                self.artifact_uri,
+            )
         return None
 
     def _get_tracking_host_creds(self) -> rest_utils.MlflowHostCreds:
@@ -157,13 +162,7 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         return filename
 
     def _request_presigned_url(self, run_id: str, path: str, expiration: int = 900):
-        """Request a presigned upload URL from the tracking server (SigV4-authenticated).
-
-        Uses raise_on_status=False and max_retries=0 so we always get a response
-        object back immediately for HTTP error codes (404, 501, 503, etc.) rather
-        than having urllib3 raise or retry. This lets _upload_via_presigned_url
-        inspect the status code and apply the correct caching policy.
-        """
+        """Request a presigned upload URL from the tracking server (SigV4-authenticated)."""
         host_creds = self._get_tracking_host_creds()
         return rest_utils.http_request(
             host_creds,
@@ -175,7 +174,7 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         )
 
     def _upload_via_presigned_url(self, local_file: str, artifact_path: Optional[str]) -> None:
-        """Attempt to upload a file via a presigned URL.
+        """Upload a file via a presigned URL.
 
         Two distinct HTTP paths:
         1. Tracking server API call (_request_presigned_url): SigV4-authenticated
@@ -189,38 +188,11 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         path = self._build_upload_path(local_file, artifact_path)
         run_id = self._extract_run_id()
 
-        try:
-            response = self._request_presigned_url(run_id, path)
-        except Exception as e:
-            logger.warning(
-                "Presigned upload request failed: %s; falling back to direct S3", e
-            )
-            raise
-
-        if response.status_code in _PERMANENT_FAILURE_CODES:
-            self._presigned_supported = False
-            logger.info(
-                "Presigned upload not supported by server (HTTP %s); "
-                "falling back to direct S3",
-                response.status_code,
-            )
-            raise Exception(
-                f"Presigned upload not supported (HTTP {response.status_code})"
-            )
-
-        if response.status_code == 503:
-            logger.warning(
-                "Presigned upload failed (transient, HTTP 503); falling back to direct S3"
-            )
-            raise Exception("Presigned upload failed (HTTP 503)")
+        response = self._request_presigned_url(run_id, path)
 
         if not response.ok:
-            logger.warning(
-                "Presigned upload request failed (HTTP %s); falling back to direct S3",
-                response.status_code,
-            )
             raise Exception(
-                f"Presigned upload request failed (HTTP {response.status_code})"
+                f"Presigned upload URL request failed (HTTP {response.status_code})"
             )
 
         response_json = response.json()
@@ -228,19 +200,12 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         headers = response_json.get("headers", {})
 
         with open(local_file, "rb") as f:
-            try:
-                put_response = cloud_storage_http_request(
-                    "put",
-                    presigned_url,
-                    data=f,
-                    headers=headers,
-                )
-                put_response.raise_for_status()
-            except Exception as e:
-                logger.warning(
-                    "Presigned upload failed (transient): %s; falling back to direct S3", e
-                )
-                raise
+            put_response = cloud_storage_http_request(
+                "put",
+                presigned_url,
+                data=f,
+                headers=headers,
+            )
+            put_response.raise_for_status()
 
-        self._presigned_supported = True
         logger.debug("Artifact uploaded via presigned URL: %s", path)

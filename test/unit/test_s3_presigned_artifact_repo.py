@@ -244,39 +244,17 @@ class TestPresignedUploadHappyPath(TestCase):
         finally:
             os.unlink(tmp_path)
 
-    @mock.patch(f"{MODULE}.cloud_storage_http_request")
-    @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_successful_upload_caches_supported(self, mock_provider_cls, mock_http, mock_cloud):
-        """#18: After successful presigned upload, _presigned_supported=True."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
-        mock_http.return_value = _mock_response()
-        mock_cloud.return_value = _mock_response()
-
-        self.assertIsNone(self.repo._presigned_supported)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as f:
-            f.write(b"data")
-            tmp_path = f.name
-
-        try:
-            self.repo.log_artifact(tmp_path)
-            self.assertTrue(self.repo._presigned_supported)
-        finally:
-            os.unlink(tmp_path)
-
 
 class TestPermanentFailures(TestCase):
-    """Tests #5, #6, #9: permanent failure caching (404, 501)."""
+    """Tests #5, #6, #9: permanent failure behavior (404, 501)."""
 
     def setUp(self):
         self.repo = _create_repo()
 
     @mock.patch(f"{MODULE}.rest_utils.http_request")
     @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_fallback_on_server_404(self, mock_provider_cls, mock_http):
-        """#5: Old server returns 404 → fallback + permanently cached."""
+    def test_server_404_raises(self, mock_provider_cls, mock_http):
+        """#5: Old server returns 404 → exception propagates."""
         mock_provider = mock_provider_cls.return_value
         mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
         mock_http.return_value = _mock_response(status_code=404)
@@ -286,20 +264,15 @@ class TestPermanentFailures(TestCase):
             tmp_path = f.name
 
         try:
-            with mock.patch.object(
-                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-            ) as mock_parent:
+            with self.assertRaises(Exception):
                 self.repo.log_artifact(tmp_path)
-                mock_parent.assert_called_once()
-
-            self.assertFalse(self.repo._presigned_supported)
         finally:
             os.unlink(tmp_path)
 
     @mock.patch(f"{MODULE}.rest_utils.http_request")
     @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_fallback_on_server_501(self, mock_provider_cls, mock_http):
-        """#6: Non-S3 backend → fallback + permanently cached."""
+    def test_server_501_raises(self, mock_provider_cls, mock_http):
+        """#6: Non-S3 backend → exception propagates."""
         mock_provider = mock_provider_cls.return_value
         mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
         mock_http.return_value = _mock_response(status_code=501)
@@ -309,53 +282,22 @@ class TestPermanentFailures(TestCase):
             tmp_path = f.name
 
         try:
-            with mock.patch.object(
-                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-            ) as mock_parent:
+            with self.assertRaises(Exception):
                 self.repo.log_artifact(tmp_path)
-                mock_parent.assert_called_once()
-
-            self.assertFalse(self.repo._presigned_supported)
-        finally:
-            os.unlink(tmp_path)
-
-    @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_permanent_cache_after_404(self, mock_provider_cls, mock_http):
-        """#9: After 404, all subsequent calls skip presigned without server contact."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
-        mock_http.return_value = _mock_response(status_code=404)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as f:
-            f.write(b"data")
-            tmp_path = f.name
-
-        try:
-            with mock.patch.object(
-                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-            ) as mock_parent:
-                self.repo.log_artifact(tmp_path)
-                self.assertEqual(mock_http.call_count, 1)
-
-                mock_http.reset_mock()
-                self.repo.log_artifact(tmp_path)
-                mock_http.assert_not_called()
-                self.assertEqual(mock_parent.call_count, 2)
         finally:
             os.unlink(tmp_path)
 
 
 class TestTransientFailures(TestCase):
-    """Tests #7, #8, #10: transient failure handling (503, PUT failure)."""
+    """Tests #7, #8: transient failure handling (503, PUT failure)."""
 
     def setUp(self):
         self.repo = _create_repo()
 
     @mock.patch(f"{MODULE}.rest_utils.http_request")
     @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_fallback_on_server_503_not_cached(self, mock_provider_cls, mock_http):
-        """#7: 503 → fallback but NOT cached (retries next call)."""
+    def test_server_503_raises(self, mock_provider_cls, mock_http):
+        """#7: 503 → exception propagates."""
         mock_provider = mock_provider_cls.return_value
         mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
         mock_http.return_value = _mock_response(status_code=503)
@@ -365,21 +307,16 @@ class TestTransientFailures(TestCase):
             tmp_path = f.name
 
         try:
-            with mock.patch.object(
-                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-            ) as mock_parent:
+            with self.assertRaises(Exception):
                 self.repo.log_artifact(tmp_path)
-                mock_parent.assert_called_once()
-
-            self.assertIsNone(self.repo._presigned_supported)
         finally:
             os.unlink(tmp_path)
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
     @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_fallback_on_put_failure_not_cached(self, mock_provider_cls, mock_http, mock_cloud):
-        """#8: PUT fails → fallback but NOT cached (retries next call)."""
+    def test_put_failure_raises(self, mock_provider_cls, mock_http, mock_cloud):
+        """#8: PUT fails → exception propagates."""
         mock_provider = mock_provider_cls.return_value
         mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
         mock_http.return_value = _mock_response()
@@ -390,43 +327,8 @@ class TestTransientFailures(TestCase):
             tmp_path = f.name
 
         try:
-            with mock.patch.object(
-                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-            ) as mock_parent:
+            with self.assertRaises(Exception):
                 self.repo.log_artifact(tmp_path)
-                mock_parent.assert_called_once()
-
-            self.assertIsNone(self.repo._presigned_supported)
-        finally:
-            os.unlink(tmp_path)
-
-    @mock.patch(f"{MODULE}.cloud_storage_http_request")
-    @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_transient_failure_retries(self, mock_provider_cls, mock_http, mock_cloud):
-        """#10: After 503, next call attempts presigned again."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
-
-        mock_http.return_value = _mock_response(status_code=503)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as f:
-            f.write(b"data")
-            tmp_path = f.name
-
-        try:
-            with mock.patch.object(
-                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-            ):
-                self.repo.log_artifact(tmp_path)
-                self.assertEqual(mock_http.call_count, 1)
-
-                mock_http.return_value = _mock_response()
-                mock_cloud.return_value = _mock_response()
-
-                self.repo.log_artifact(tmp_path)
-                self.assertEqual(mock_http.call_count, 2)
-                mock_cloud.assert_called_once()
         finally:
             os.unlink(tmp_path)
 
@@ -478,46 +380,21 @@ class TestDirectoryUploads(TestCase):
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
     @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_log_artifacts_partial_failure_per_file(
+    def test_log_artifacts_failure_propagates(
         self, mock_provider_cls, mock_http, mock_cloud
     ):
-        """#19: Directory with 3 files: one fails (503) → per-file fallback.
-
-        Exactly one file fails presigned (transient 503) and falls back to direct S3.
-        The other two files upload successfully via presigned URL.
-        """
+        """#19: If presigned upload fails for a file, exception propagates."""
         mock_provider = mock_provider_cls.return_value
         mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
-
-        call_count = {"n": 0}
-
-        def http_side_effect(*args, **kwargs):
-            call_count["n"] += 1
-            if call_count["n"] == 2:
-                return _mock_response(status_code=503)
-            return _mock_response()
-
-        mock_http.side_effect = http_side_effect
-        mock_cloud.return_value = _mock_response()
+        mock_http.return_value = _mock_response(status_code=503)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            for name in ["a.txt", "b.txt", "c.txt"]:
+            for name in ["a.txt", "b.txt"]:
                 with open(os.path.join(tmp_dir, name), "w") as f:
                     f.write("content")
 
-            with mock.patch.object(
-                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-            ) as mock_parent:
+            with self.assertRaises(Exception):
                 self.repo.log_artifacts(tmp_dir)
-
-                # Exactly one file should have fallen back to parent
-                self.assertEqual(mock_http.call_count, 3)
-                self.assertEqual(mock_cloud.call_count, 2)
-                self.assertEqual(mock_parent.call_count, 1)
-
-                # The file that fell back should be one of our test files
-                parent_call_file = os.path.basename(mock_parent.call_args[0][0])
-                self.assertIn(parent_call_file, ["a.txt", "b.txt", "c.txt"])
 
 
 if __name__ == "__main__":

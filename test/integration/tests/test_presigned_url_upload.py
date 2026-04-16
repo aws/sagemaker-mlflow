@@ -33,7 +33,7 @@ from utils.boto_utils import get_file_data_from_s3
 from utils.presigned_utils import presigned_upload_supported
 from utils.random_utils import generate_uuid
 
-_PRESIGNED_ENV_VAR = "SAGEMAKER_PRESIGNED_URL_UPLOAD"
+_PRESIGNED_ENV_VAR = "SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED"
 
 
 def _parse_s3_uri(uri: str) -> tuple:
@@ -187,7 +187,7 @@ class TestPresignedUrlUploadDisabled:
         mlflow.set_tracking_uri(tracking_server)
 
     def test_upload_without_presigned_env_var(self, setup):
-        """Without SAGEMAKER_PRESIGNED_URL_UPLOAD, uploads go through direct S3."""
+        """Without SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED, uploads go through direct S3."""
         file_path, file_contents = _create_temp_file()
         file_name = os.path.basename(file_path)
 
