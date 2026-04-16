@@ -23,7 +23,6 @@ Tests are skipped when the server does not support the presigned upload
 endpoint (HTTP 404), so they are safe to run against older servers.
 """
 
-import logging
 import os
 import tempfile
 
@@ -31,42 +30,13 @@ import mlflow
 import pytest
 
 from utils.boto_utils import get_file_data_from_s3
+from utils.presigned_utils import presigned_upload_supported
 from utils.random_utils import generate_uuid
-
-logger = logging.getLogger(__name__)
 
 _PRESIGNED_ENV_VAR = "SAGEMAKER_PRESIGNED_URL_UPLOAD"
 
 
-def _presigned_upload_supported(tracking_server_arn):
-    """Probe whether the tracking server supports the presigned upload endpoint."""
-    from mlflow.utils import rest_utils
-    from sagemaker_mlflow.mlflow_sagemaker_helpers import SageMakerMLflowHostMetadataProvider
-
-    provider = SageMakerMLflowHostMetadataProvider()
-    provider.set_arn(tracking_server_arn)
-    host_creds = rest_utils.MlflowHostCreds(
-        host=provider.construct_tracking_server_url(),
-        auth="arn",
-    )
-    try:
-        response = rest_utils.http_request(
-            host_creds,
-            "/api/2.0/mlflow/artifacts/presigned-upload-url",
-            "POST",
-            json={"run_id": "probe", "path": "probe.txt"},
-            raise_on_status=False,
-            max_retries=0,
-        )
-        # 404 = endpoint doesn't exist, 501 = not implemented
-        # Anything else (400, 403, etc.) means the endpoint exists
-        return response.status_code not in (404, 501)
-    except Exception as e:
-        logger.warning("Failed to probe presigned upload endpoint: %s", e)
-        return False
-
-
-def _parse_s3_uri(uri):
+def _parse_s3_uri(uri: str) -> tuple:
     """Parse s3://bucket/key into (bucket, key)."""
     if not uri.startswith("s3://"):
         raise ValueError(f"Invalid S3 URI: {uri}")
@@ -75,7 +45,7 @@ def _parse_s3_uri(uri):
     return parts[0], parts[1] if len(parts) > 1 else ""
 
 
-def _create_temp_file(content=None, suffix=".txt"):
+def _create_temp_file(content: str = None, suffix: str = ".txt") -> tuple:
     """Create a temporary file with random or specified content. Returns (path, content)."""
     if content is None:
         content = generate_uuid(40) + generate_uuid(40)
@@ -90,7 +60,7 @@ def _create_temp_file(content=None, suffix=".txt"):
 class PresignedEnvContext:
     """Context manager to set/unset the presigned upload environment variable."""
 
-    def __init__(self, enabled=True):
+    def __init__(self, enabled: bool = True):
         self._enabled = enabled
         self._original = None
 
@@ -120,7 +90,7 @@ class TestPresignedUrlUpload:
     def setup(self, tracking_server):
         mlflow.set_tracking_uri(tracking_server)
 
-        if not _presigned_upload_supported(tracking_server):
+        if not presigned_upload_supported(tracking_server):
             pytest.skip(
                 "Tracking server does not support presigned upload endpoint "
                 "(requires mlflow/mlflow#21039)"

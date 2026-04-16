@@ -83,7 +83,7 @@ setup(
             "arn=sagemaker_mlflow.mlflow_sagemaker_registry_store:" "MlflowSageMakerRegistryStore"
         ),
         "mlflow.artifact_repository": (
-            "s3=sagemaker_mlflow.s3_presigned_artifact_repo:SageMakerS3ArtifactRepository"
+            "s3=sagemaker_mlflow.s3_presigned_artifact_repo:S3PresignedArtifactRepository"
         ),
     },
     version=read_version(),

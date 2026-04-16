@@ -14,6 +14,7 @@
 import logging
 import os
 import posixpath
+from typing import Optional
 from urllib.parse import urlparse
 
 from mlflow.store.artifact.s3_artifact_repo import S3ArtifactRepository
@@ -39,12 +40,12 @@ _PRESIGNED_UPLOAD_ENDPOINT = "/api/2.0/mlflow/artifacts/presigned-upload-url"
 _PERMANENT_FAILURE_CODES = (404, 501)
 
 
-class SageMakerS3ArtifactRepository(S3ArtifactRepository):
-    """S3 artifact repository with presigned URL upload support for SageMaker.
+class S3PresignedArtifactRepository(S3ArtifactRepository):
+    """S3 artifact repository with optional presigned URL upload support.
 
     Extends S3ArtifactRepository to optionally upload artifacts via presigned URLs
-    obtained from the SageMaker MLflow tracking server. This avoids the need for
-    the client to have direct S3 write credentials.
+    obtained from the MLflow tracking server. This avoids the need for the client
+    to have direct S3 write credentials.
 
     When the SAGEMAKER_PRESIGNED_URL_UPLOAD environment variable is set to "true",
     artifact uploads will first attempt to use presigned URLs. If the server does
@@ -60,12 +61,12 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._use_presigned = (
+        self._use_presigned: bool = (
             os.environ.get(_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR, "").lower() == "true"
         )
-        self._presigned_supported = None
+        self._presigned_supported: Optional[bool] = None
 
-    def _should_use_presigned(self):
+    def _should_use_presigned(self) -> bool:
         """Check whether presigned upload should be attempted for this call."""
         return (
             self._use_presigned
@@ -74,16 +75,20 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
             and self._extract_run_id() is not None
         )
 
-    def log_artifact(self, local_file, artifact_path=None):
+    def log_artifact(self, local_file: str, artifact_path: Optional[str] = None) -> None:
         if self._should_use_presigned():
             try:
                 self._upload_via_presigned_url(local_file, artifact_path)
                 return
             except Exception:
-                pass
+                logger.debug("Presigned upload attempt failed; falling back to direct S3", exc_info=True)
         super().log_artifact(local_file, artifact_path)
 
-    def log_artifacts(self, local_dir, artifact_path=None):
+    def log_artifacts(self, local_dir: str, artifact_path: Optional[str] = None) -> None:
+        if not self._should_use_presigned():
+            super().log_artifacts(local_dir, artifact_path)
+            return
+
         local_dir = os.path.abspath(local_dir)
         for root, _, filenames in os.walk(local_dir):
             if root == local_dir:
@@ -102,7 +107,7 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
                     file_artifact_path = None
                 self.log_artifact(local_file, file_artifact_path)
 
-    def _extract_run_id(self):
+    def _extract_run_id(self) -> Optional[str]:
         """Extract run_id from artifact_uri using reverse scan for last 'artifacts' segment.
 
         Pattern: s3://bucket/.../<run_id>/artifacts/...
@@ -119,7 +124,7 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
             pass
         return None
 
-    def _get_tracking_host_creds(self):
+    def _get_tracking_host_creds(self) -> rest_utils.MlflowHostCreds:
         """Build MlflowHostCreds for the SageMaker tracking server.
 
         Follows the pattern in mlflow_sagemaker_store.py: uses
@@ -140,7 +145,7 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
             server_cert_path=os.environ.get(_TRACKING_SERVER_CERT_PATH_ENV_VAR),
         )
 
-    def _build_upload_path(self, local_file, artifact_path):
+    def _build_upload_path(self, local_file: str, artifact_path: Optional[str]) -> str:
         """Construct the relative path sent to the server as the 'path' parameter.
 
         Must match how S3ArtifactRepository.log_artifact builds the S3 key:
@@ -151,18 +156,16 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
             return posixpath.join(artifact_path, filename)
         return filename
 
-    def _request_presigned_url(self, run_id, path, expiration=900):
+    def _request_presigned_url(self, run_id: str, path: str, expiration: int = 900):
         """Request a presigned upload URL from the tracking server (SigV4-authenticated).
 
         Uses raise_on_status=False and max_retries=0 so we always get a response
-        object back immediately for
-        HTTP error codes (404, 501, 503, etc.) rather than having urllib3 raise
-        or retry. Retries are handled at the application level (next log_artifact
-        call re-attempts presigned). This lets _upload_via_presigned_url inspect
-        the status code and apply the correct caching policy.
+        object back immediately for HTTP error codes (404, 501, 503, etc.) rather
+        than having urllib3 raise or retry. This lets _upload_via_presigned_url
+        inspect the status code and apply the correct caching policy.
         """
         host_creds = self._get_tracking_host_creds()
-        response = rest_utils.http_request(
+        return rest_utils.http_request(
             host_creds,
             _PRESIGNED_UPLOAD_ENDPOINT,
             "POST",
@@ -170,9 +173,8 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
             raise_on_status=False,
             max_retries=0,
         )
-        return response
 
-    def _upload_via_presigned_url(self, local_file, artifact_path):
+    def _upload_via_presigned_url(self, local_file: str, artifact_path: Optional[str]) -> None:
         """Attempt to upload a file via a presigned URL.
 
         Two distinct HTTP paths:
@@ -181,6 +183,8 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
         2. S3 presigned URL PUT: NO auth — authorization is embedded in the
            presigned URL signature. Uses cloud_storage_http_request (same pattern
            as presigned_url_artifact_repo.py and optimized_s3_artifact_repo.py).
+
+        Streams the file directly to avoid loading large artifacts into memory.
         """
         path = self._build_upload_path(local_file, artifact_path)
         run_id = self._extract_run_id()
@@ -224,21 +228,19 @@ class SageMakerS3ArtifactRepository(S3ArtifactRepository):
         headers = response_json.get("headers", {})
 
         with open(local_file, "rb") as f:
-            file_data = f.read()
-
-        try:
-            put_response = cloud_storage_http_request(
-                "put",
-                presigned_url,
-                data=file_data,
-                headers=headers,
-            )
-            put_response.raise_for_status()
-        except Exception as e:
-            logger.warning(
-                "Presigned upload failed (transient): %s; falling back to direct S3", e
-            )
-            raise
+            try:
+                put_response = cloud_storage_http_request(
+                    "put",
+                    presigned_url,
+                    data=f,
+                    headers=headers,
+                )
+                put_response.raise_for_status()
+            except Exception as e:
+                logger.warning(
+                    "Presigned upload failed (transient): %s; falling back to direct S3", e
+                )
+                raise
 
         self._presigned_supported = True
         logger.debug("Artifact uploaded via presigned URL: %s", path)

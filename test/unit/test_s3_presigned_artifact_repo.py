@@ -17,7 +17,7 @@ import unittest
 from unittest import mock, TestCase
 
 from sagemaker_mlflow.s3_presigned_artifact_repo import (
-    SageMakerS3ArtifactRepository,
+    S3PresignedArtifactRepository,
     _SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR,
 )
 
@@ -49,11 +49,11 @@ def _mock_response(status_code=200, json_data=None):
 
 
 def _create_repo(artifact_uri=TEST_ARTIFACT_URI, tracking_uri=TEST_VALID_ARN, env_enabled=True):
-    """Create a SageMakerS3ArtifactRepository with mocked parent init."""
+    """Create an S3PresignedArtifactRepository with mocked parent init."""
     env = {_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR: "true" if env_enabled else ""}
     with mock.patch.dict(os.environ, env, clear=False):
         with mock.patch(f"{MODULE}.S3ArtifactRepository.__init__", return_value=None):
-            repo = SageMakerS3ArtifactRepository(artifact_uri, tracking_uri=tracking_uri)
+            repo = S3PresignedArtifactRepository(artifact_uri, tracking_uri=tracking_uri)
             repo.artifact_uri = artifact_uri
             repo.tracking_uri = tracking_uri
             return repo
@@ -67,7 +67,7 @@ class TestFeatureFlagAndInit(TestCase):
         repo = _create_repo(env_enabled=False)
 
         with mock.patch.object(
-            SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+            S3PresignedArtifactRepository.__bases__[0], "log_artifact"
         ) as mock_parent:
             repo.log_artifact("/tmp/model.pkl")
             mock_parent.assert_called_once_with("/tmp/model.pkl", None)
@@ -84,7 +84,7 @@ class TestFeatureFlagAndInit(TestCase):
         self.assertFalse(repo._should_use_presigned())
 
         with mock.patch.object(
-            SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+            S3PresignedArtifactRepository.__bases__[0], "log_artifact"
         ) as mock_parent:
             repo.log_artifact("/tmp/model.pkl")
             mock_parent.assert_called_once()
@@ -164,6 +164,30 @@ class TestPresignedUploadHappyPath(TestCase):
             cloud_call = mock_cloud.call_args
             self.assertEqual(cloud_call[0][0], "put")
             self.assertEqual(cloud_call[0][1], TEST_PRESIGNED_URL)
+        finally:
+            os.unlink(tmp_path)
+
+    @mock.patch(f"{MODULE}.cloud_storage_http_request")
+    @mock.patch(f"{MODULE}.rest_utils.http_request")
+    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
+    def test_presigned_upload_streams_file(self, mock_provider_cls, mock_http, mock_cloud):
+        """Verify file is streamed (file handle passed) rather than read into memory."""
+        mock_provider = mock_provider_cls.return_value
+        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_http.return_value = _mock_response()
+        mock_cloud.return_value = _mock_response()
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as f:
+            f.write(b"model_data")
+            tmp_path = f.name
+
+        try:
+            self.repo.log_artifact(tmp_path)
+
+            cloud_call = mock_cloud.call_args
+            # data should be a file object, not bytes
+            data_arg = cloud_call[1]["data"]
+            self.assertTrue(hasattr(data_arg, "read"), "data should be a file-like object, not bytes")
         finally:
             os.unlink(tmp_path)
 
@@ -263,7 +287,7 @@ class TestPermanentFailures(TestCase):
 
         try:
             with mock.patch.object(
-                SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
             ) as mock_parent:
                 self.repo.log_artifact(tmp_path)
                 mock_parent.assert_called_once()
@@ -286,7 +310,7 @@ class TestPermanentFailures(TestCase):
 
         try:
             with mock.patch.object(
-                SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
             ) as mock_parent:
                 self.repo.log_artifact(tmp_path)
                 mock_parent.assert_called_once()
@@ -309,7 +333,7 @@ class TestPermanentFailures(TestCase):
 
         try:
             with mock.patch.object(
-                SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
             ) as mock_parent:
                 self.repo.log_artifact(tmp_path)
                 self.assertEqual(mock_http.call_count, 1)
@@ -342,7 +366,7 @@ class TestTransientFailures(TestCase):
 
         try:
             with mock.patch.object(
-                SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
             ) as mock_parent:
                 self.repo.log_artifact(tmp_path)
                 mock_parent.assert_called_once()
@@ -367,7 +391,7 @@ class TestTransientFailures(TestCase):
 
         try:
             with mock.patch.object(
-                SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
             ) as mock_parent:
                 self.repo.log_artifact(tmp_path)
                 mock_parent.assert_called_once()
@@ -392,7 +416,7 @@ class TestTransientFailures(TestCase):
 
         try:
             with mock.patch.object(
-                SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
             ):
                 self.repo.log_artifact(tmp_path)
                 self.assertEqual(mock_http.call_count, 1)
@@ -412,6 +436,16 @@ class TestDirectoryUploads(TestCase):
 
     def setUp(self):
         self.repo = _create_repo()
+
+    def test_log_artifacts_disabled_calls_parent(self):
+        """When presigned is disabled, log_artifacts delegates to parent directly."""
+        repo = _create_repo(env_enabled=False)
+
+        with mock.patch.object(
+            S3PresignedArtifactRepository.__bases__[0], "log_artifacts"
+        ) as mock_parent:
+            repo.log_artifacts("/tmp/some_dir", "output")
+            mock_parent.assert_called_once_with("/tmp/some_dir", "output")
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
@@ -472,7 +506,7 @@ class TestDirectoryUploads(TestCase):
                     f.write("content")
 
             with mock.patch.object(
-                SageMakerS3ArtifactRepository.__bases__[0], "log_artifact"
+                S3PresignedArtifactRepository.__bases__[0], "log_artifact"
             ) as mock_parent:
                 self.repo.log_artifacts(tmp_dir)
 
