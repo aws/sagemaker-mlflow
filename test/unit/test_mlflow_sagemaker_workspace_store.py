@@ -1,9 +1,7 @@
 import unittest
 from unittest import mock, TestCase
-from sagemaker_mlflow.mlflow_sagemaker_workspace_store import (
-    MlflowSageMakerWorkspaceStore,
-    get_host_creds,
-)
+from sagemaker_mlflow.mlflow_sagemaker_workspace_store import MlflowSageMakerWorkspaceStore
+from sagemaker_mlflow.host_creds import get_host_creds
 
 TEST_VALID_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
 TEST_VALID_APP_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-app/app-XXXXXXXXXXXX"
@@ -15,7 +13,7 @@ class MlflowSageMakerWorkspaceStoreTest(TestCase):
         url = "url"
 
         with mock.patch(
-            "sagemaker_mlflow.mlflow_sagemaker_workspace_store.host_metadata_provider.construct_tracking_server_url",
+            "sagemaker_mlflow.host_creds.host_metadata_provider.construct_tracking_server_url",
             return_value=url,
         ):
             result = get_host_creds(TEST_VALID_ARN)
@@ -26,7 +24,7 @@ class MlflowSageMakerWorkspaceStoreTest(TestCase):
         url = "url"
 
         with mock.patch(
-            "sagemaker_mlflow.mlflow_sagemaker_workspace_store.host_metadata_provider.construct_tracking_server_url",
+            "sagemaker_mlflow.host_creds.host_metadata_provider.construct_tracking_server_url",
             return_value=url,
         ):
             result = get_host_creds(TEST_VALID_APP_ARN)
@@ -35,7 +33,7 @@ class MlflowSageMakerWorkspaceStoreTest(TestCase):
 
     def test_store_instantiation(self):
         with mock.patch(
-            "sagemaker_mlflow.mlflow_sagemaker_workspace_store.host_metadata_provider.construct_tracking_server_url",
+            "sagemaker_mlflow.host_creds.host_metadata_provider.construct_tracking_server_url",
             return_value="https://test-site.com",
         ):
             store = MlflowSageMakerWorkspaceStore(TEST_VALID_ARN)
@@ -46,7 +44,7 @@ class MlflowSageMakerWorkspaceStoreTest(TestCase):
         url = "https://test-site.com"
 
         with mock.patch(
-            "sagemaker_mlflow.mlflow_sagemaker_workspace_store.host_metadata_provider.construct_tracking_server_url",
+            "sagemaker_mlflow.host_creds.host_metadata_provider.construct_tracking_server_url",
             return_value=url,
         ):
             store = MlflowSageMakerWorkspaceStore(TEST_VALID_ARN)

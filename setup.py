@@ -86,6 +86,7 @@ setup(
         "mlflow.scorer_store": ("arn=sagemaker_mlflow.mlflow_sagemaker_scorer_store:MlflowSageMakerScorerStore"),
         "mlflow.workspace_provider": (
             "arn=sagemaker_mlflow.mlflow_sagemaker_workspace_store:MlflowSageMakerWorkspaceStore"
+        ),
         "mlflow.artifact_repository": (
             "s3=sagemaker_mlflow.s3_presigned_artifact_repo:S3PresignedArtifactRepository"
         ),
