@@ -21,19 +21,11 @@ from mlflow.store.artifact.s3_artifact_repo import S3ArtifactRepository
 from mlflow.utils import rest_utils
 from mlflow.utils.request_utils import cloud_storage_http_request
 
-from sagemaker_mlflow.mlflow_sagemaker_helpers import SageMakerMLflowHostMetadataProvider
+from sagemaker_mlflow.host_creds import get_host_creds as _get_host_creds
 
 logger = logging.getLogger(__name__)
 
 _SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR = "SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED"
-
-_TRACKING_INSECURE_TLS_ENV_VAR = "MLFLOW_TRACKING_INSECURE_TLS"
-_TRACKING_USERNAME_ENV_VAR = "MLFLOW_TRACKING_USERNAME"
-_TRACKING_PASSWORD_ENV_VAR = "MLFLOW_TRACKING_PASSWORD"
-_TRACKING_TOKEN_ENV_VAR = "MLFLOW_TRACKING_TOKEN"
-
-_TRACKING_CLIENT_CERT_PATH_ENV_VAR = "MLFLOW_TRACKING_CLIENT_CERT_PATH"
-_TRACKING_SERVER_CERT_PATH_ENV_VAR = "MLFLOW_TRACKING_SERVER_CERT_PATH"
 
 _PRESIGNED_UPLOAD_ENDPOINT = "/api/2.0/mlflow/artifacts/presigned-upload-url"
 
@@ -130,25 +122,8 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         return None
 
     def _get_tracking_host_creds(self) -> rest_utils.MlflowHostCreds:
-        """Build MlflowHostCreds for the SageMaker tracking server.
-
-        Follows the pattern in mlflow_sagemaker_store.py: uses
-        SageMakerMLflowHostMetadataProvider to convert the tracking ARN into
-        a URL, then returns MlflowHostCreds with auth="arn" to trigger SigV4
-        signing via the AuthProvider entry point.
-        """
-        provider = SageMakerMLflowHostMetadataProvider()
-        provider.set_arn(self.tracking_uri)
-        return rest_utils.MlflowHostCreds(
-            host=provider.construct_tracking_server_url(),
-            username=os.environ.get(_TRACKING_USERNAME_ENV_VAR),
-            password=os.environ.get(_TRACKING_PASSWORD_ENV_VAR),
-            token=os.environ.get(_TRACKING_TOKEN_ENV_VAR),
-            auth="arn",
-            ignore_tls_verification=os.environ.get(_TRACKING_INSECURE_TLS_ENV_VAR) == "true",
-            client_cert_path=os.environ.get(_TRACKING_CLIENT_CERT_PATH_ENV_VAR),
-            server_cert_path=os.environ.get(_TRACKING_SERVER_CERT_PATH_ENV_VAR),
-        )
+        """Build MlflowHostCreds for the SageMaker tracking server."""
+        return _get_host_creds(self.tracking_uri)
 
     def _build_upload_path(self, local_file: str, artifact_path: Optional[str]) -> str:
         """Construct the relative path sent to the server as the 'path' parameter.

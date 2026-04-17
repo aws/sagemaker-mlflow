@@ -16,6 +16,8 @@ import tempfile
 import unittest
 from unittest import mock, TestCase
 
+from mlflow.utils import rest_utils
+
 from sagemaker_mlflow.s3_presigned_artifact_repo import (
     S3PresignedArtifactRepository,
     _SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR,
@@ -141,11 +143,10 @@ class TestPresignedUploadHappyPath(TestCase):
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_presigned_upload_happy_path(self, mock_provider_cls, mock_http, mock_cloud):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_presigned_upload_happy_path(self, mock_get_creds, mock_http, mock_cloud):
         """#2: Mock server returns URL → file PUT uploaded via cloud_storage_http_request."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response()
         mock_cloud.return_value = _mock_response()
 
@@ -169,11 +170,10 @@ class TestPresignedUploadHappyPath(TestCase):
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_presigned_upload_streams_file(self, mock_provider_cls, mock_http, mock_cloud):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_presigned_upload_streams_file(self, mock_get_creds, mock_http, mock_cloud):
         """Verify file is streamed (file handle passed) rather than read into memory."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response()
         mock_cloud.return_value = _mock_response()
 
@@ -193,11 +193,10 @@ class TestPresignedUploadHappyPath(TestCase):
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_presigned_upload_with_artifact_path(self, mock_provider_cls, mock_http, mock_cloud):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_presigned_upload_with_artifact_path(self, mock_get_creds, mock_http, mock_cloud):
         """#3: Server receives path='models/model.pkl' when artifact_path='models'."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response()
         mock_cloud.return_value = _mock_response()
 
@@ -217,11 +216,10 @@ class TestPresignedUploadHappyPath(TestCase):
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_presigned_upload_includes_headers(self, mock_provider_cls, mock_http, mock_cloud):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_presigned_upload_includes_headers(self, mock_get_creds, mock_http, mock_cloud):
         """#15: Server response headers forwarded in PUT request."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
 
         custom_headers = {
             "Content-Type": "application/octet-stream",
@@ -252,11 +250,10 @@ class TestPermanentFailures(TestCase):
         self.repo = _create_repo()
 
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_server_404_raises(self, mock_provider_cls, mock_http):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_server_404_raises(self, mock_get_creds, mock_http):
         """#5: Old server returns 404 → exception propagates."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response(status_code=404)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as f:
@@ -270,11 +267,10 @@ class TestPermanentFailures(TestCase):
             os.unlink(tmp_path)
 
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_server_501_raises(self, mock_provider_cls, mock_http):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_server_501_raises(self, mock_get_creds, mock_http):
         """#6: Non-S3 backend → exception propagates."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response(status_code=501)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as f:
@@ -295,11 +291,10 @@ class TestTransientFailures(TestCase):
         self.repo = _create_repo()
 
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_server_503_raises(self, mock_provider_cls, mock_http):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_server_503_raises(self, mock_get_creds, mock_http):
         """#7: 503 → exception propagates."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response(status_code=503)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as f:
@@ -314,11 +309,10 @@ class TestTransientFailures(TestCase):
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_put_failure_raises(self, mock_provider_cls, mock_http, mock_cloud):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_put_failure_raises(self, mock_get_creds, mock_http, mock_cloud):
         """#8: PUT fails → exception propagates."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response()
         mock_cloud.side_effect = Exception("Connection reset")
 
@@ -351,11 +345,10 @@ class TestDirectoryUploads(TestCase):
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
-    def test_presigned_upload_directory(self, mock_provider_cls, mock_http, mock_cloud):
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_presigned_upload_directory(self, mock_get_creds, mock_http, mock_cloud):
         """#4: log_artifacts() calls self.log_artifact() per file, each via presigned URL."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response()
         mock_cloud.return_value = _mock_response()
 
@@ -379,13 +372,12 @@ class TestDirectoryUploads(TestCase):
 
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
-    @mock.patch(f"{MODULE}.SageMakerMLflowHostMetadataProvider")
+    @mock.patch(f"{MODULE}._get_host_creds")
     def test_log_artifacts_failure_propagates(
-        self, mock_provider_cls, mock_http, mock_cloud
+        self, mock_get_creds, mock_http, mock_cloud
     ):
         """#19: If presigned upload fails for a file, exception propagates."""
-        mock_provider = mock_provider_cls.return_value
-        mock_provider.construct_tracking_server_url.return_value = TEST_TRACKING_URL
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response(status_code=503)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
