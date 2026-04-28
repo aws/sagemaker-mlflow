@@ -13,14 +13,12 @@
 
 from functools import partial
 
-from mlflow.store.tracking.rest_store import RestStore
+from mlflow.store.workspace.rest_store import RestWorkspaceStore
 
 from sagemaker_mlflow.host_creds import get_host_creds
 
 
-class MlflowSageMakerStore(RestStore):
-    store_uri = ""
+class MlflowSageMakerWorkspaceStore(RestWorkspaceStore):
 
-    def __init__(self, store_uri, artifact_uri):
-        self.store_uri = store_uri
-        super().__init__(partial(get_host_creds, store_uri))
+    def __init__(self, workspace_uri):
+        super().__init__(partial(get_host_creds, workspace_uri))

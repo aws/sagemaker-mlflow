@@ -1,7 +1,8 @@
 import unittest
 from unittest import mock, TestCase
 
-from sagemaker_mlflow.mlflow_sagemaker_store import MlflowSageMakerStore, get_host_creds
+from sagemaker_mlflow.mlflow_sagemaker_store import MlflowSageMakerStore
+from sagemaker_mlflow.host_creds import get_host_creds
 
 
 TEST_VALID_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
@@ -15,7 +16,7 @@ class MlflowSageMakerStoreTest(TestCase):
         url = "url"
 
         with mock.patch(
-            "sagemaker_mlflow.mlflow_sagemaker_store.host_metadata_provider.construct_tracking_server_url",
+            "sagemaker_mlflow.host_creds.host_metadata_provider.construct_tracking_server_url",
             return_value=url,
         ):
             result = get_host_creds(arn)
