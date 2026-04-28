@@ -1,11 +1,14 @@
 # SageMaker MLflow Plugin
 
+## Why use this Plugin?
+
+Mlflow expects to be provided with a url to a tracking server, AWS services use ARNs which cannot be consumed directly.
+
 ## What does this Plugin do?
 
-This plugin generates Signature V4 headers in each outgoing request to the Amazon SageMaker with MLflow capability,
-determines the URL of capability to connect to tracking servers, and registers models to the SageMaker Model Registry.
-It generates a token with the SigV4 Algorithm that the service will use to conduct Authentication and Authorization
-using AWS IAM.
+This plugin generates Signature V4 headers in each outgoing request to AWS hosted MLFlow instances (Sagemaker and App),
+determines the URL to connect to tracking servers, then generates a token with the SigV4 Algorithm that the service will use 
+to conduct Authentication and Authorization using AWS IAM.
 
 ## Installation
 
@@ -26,6 +29,28 @@ To install a specific mlflow version
 ```
 pip install .
 pip install mlflow==2.13
+```
+## Usage
+
+This plugin leverages the boto3 package, and should align with it's patterns.
+
+### Assuming roles
+
+In order to run this with an assumed role, first use [boto3.setup_default_session()](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/core/boto3.html)
+
+#### Example with SSO
+```
+base_session = boto3.Session(
+  profile_name=profile_name_str, region_name=region_str
+)
+response = sts.assume_role(RoleArn=assumed_role_arn, RoleSessionName="AssumedSession")
+creds = response["Credentials"]
+boto3.setup_default_session(
+  aws_access_key_id=creds["AccessKeyId"],
+  aws_secret_access_key=creds["SecretAccessKey"],
+  aws_session_token=creds["SessionToken"],
+  region_name=base_session.region_name,
+)
 ```
 
 ## Development details
