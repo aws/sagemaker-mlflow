@@ -9,23 +9,19 @@ using AWS IAM.
 
 ## Installation
 
-To install this plugin, run the following command inside the directory:
-```
-pip install .
-```
-
-Eventually when the plugin gets distributed, it will be installed with:
+To install this plugin (lightweight, depends on `mlflow-skinny`):
 ```
 pip install sagemaker-mlflow
 ```
 
-Running this will install the Auth Plugin and mlflow.
+To install with the full `mlflow` dependency set:
+```
+pip install sagemaker-mlflow[full]
+```
 
-To install a specific mlflow version
-
+To install from source:
 ```
 pip install .
-pip install mlflow==2.13
 ```
 
 ## Development details
@@ -33,7 +29,7 @@ pip install mlflow==2.13
 ### setup.py
 
 `setup.py` Contains the primary entry points for the sdk. 
-`install_requires` Installs mlflow.
+`install_requires` Installs `mlflow-skinny` (lightweight) by default. The `[full]` extra installs the full `mlflow` package.
 `entry_points` Contains the entry points for the sdk. See https://mlflow.org/docs/latest/plugins.html#defining-a-plugin
 for more details.
 

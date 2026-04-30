@@ -69,10 +69,16 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
     ],
-    # Require MLflow as a dependency of the plugin, so that plugin users can
-    # simply install the plugin and then immediately use it with MLflow
-    install_requires=["boto3>=1.34", "mlflow>=2.8"],
-    extras_require={"test": test_requirements, "test_prerelease": test_prerelease_requirements},
+    # Depend on mlflow-skinny to avoid pulling in heavy data-science
+    # dependencies (numpy, scipy, scikit-learn, pyarrow, etc.).
+    # Users who need the full mlflow dependency set can install
+    # sagemaker-mlflow[full].
+    install_requires=["boto3>=1.34", "mlflow-skinny>=2.8"],
+    extras_require={
+        "full": ["mlflow>=2.8"],
+        "test": test_requirements,
+        "test_prerelease": test_prerelease_requirements,
+    },
     python_requires=">= 3.8",
     entry_points={
         "mlflow.tracking_store": "arn=sagemaker_mlflow.mlflow_sagemaker_store:MlflowSageMakerStore",
@@ -87,9 +93,7 @@ setup(
         "mlflow.workspace_provider": (
             "arn=sagemaker_mlflow.mlflow_sagemaker_workspace_store:MlflowSageMakerWorkspaceStore"
         ),
-        "mlflow.artifact_repository": (
-            "s3=sagemaker_mlflow.s3_presigned_artifact_repo:S3PresignedArtifactRepository"
-        ),
+        "mlflow.artifact_repository": ("s3=sagemaker_mlflow.s3_presigned_artifact_repo:S3PresignedArtifactRepository"),
     },
     version=read_version(),
     description="AWS Plugin for MLflow with SageMaker",
