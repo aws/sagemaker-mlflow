@@ -7,4 +7,5 @@ pytest-rerunfailures
 pytest-timeout
 pytest-xdist
 scikit-learn
+torch
 moto
