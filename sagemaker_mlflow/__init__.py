@@ -14,3 +14,5 @@
 import importlib_metadata
 
 __version__ = importlib_metadata.version("sagemaker-mlflow")
+
+from sagemaker_mlflow.log_model import log_model, set_default_inference_image_uri  # noqa: E402,F401
