@@ -24,6 +24,31 @@ To install from source:
 pip install .
 ```
 
+## Custom AWS session
+
+By default, the plugin signs requests using credentials from the boto3 default
+credential chain (environment variables, shared config, instance role, etc.).
+Callers that need to sign with a specific `boto3.Session` — for example a
+non-default profile or per-tenant credentials in a shared process — can inject
+one without mutating `os.environ`:
+
+```python
+import boto3
+import mlflow
+import sagemaker_mlflow
+
+custom = boto3.Session(profile_name="my-profile")
+
+with sagemaker_mlflow.use_session(custom):
+    mlflow.MlflowClient().search_experiments(max_results=1)
+```
+
+`use_session` is a context manager scoped to the current thread / asyncio task;
+the previous session is restored on exit (including on exception).
+`sagemaker_mlflow.set_session(session)` is also available for setting a default
+that lasts for the rest of the context. Resolution order inside `AuthBoto`:
+explicit `boto3_session=` kwarg → `use_session`/`set_session` → `boto3.Session()`.
+
 ## Development details
 
 ### setup.py

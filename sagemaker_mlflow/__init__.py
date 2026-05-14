@@ -13,4 +13,8 @@
 
 import importlib_metadata
 
+from sagemaker_mlflow.session import set_session, use_session
+
 __version__ = importlib_metadata.version("sagemaker-mlflow")
+
+__all__ = ["__version__", "set_session", "use_session"]
