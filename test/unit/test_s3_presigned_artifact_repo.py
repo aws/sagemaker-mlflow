@@ -44,9 +44,7 @@ def _mock_response(status_code=200, json_data=None):
     if status_code >= 400:
         from requests.exceptions import HTTPError
 
-        response.raise_for_status.side_effect = HTTPError(
-            f"HTTP {status_code}", response=response
-        )
+        response.raise_for_status.side_effect = HTTPError(f"HTTP {status_code}", response=response)
     return response
 
 
@@ -68,9 +66,7 @@ class TestFeatureFlagAndInit(TestCase):
         """#1: No env var → super().log_artifact() called, no server call."""
         repo = _create_repo(env_enabled=False)
 
-        with mock.patch.object(
-            S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-        ) as mock_parent:
+        with mock.patch.object(S3PresignedArtifactRepository.__bases__[0], "log_artifact") as mock_parent:
             repo.log_artifact("/tmp/model.pkl")
             mock_parent.assert_called_once_with("/tmp/model.pkl", None)
 
@@ -85,9 +81,7 @@ class TestFeatureFlagAndInit(TestCase):
         repo.tracking_uri = None
         self.assertFalse(repo._should_use_presigned())
 
-        with mock.patch.object(
-            S3PresignedArtifactRepository.__bases__[0], "log_artifact"
-        ) as mock_parent:
+        with mock.patch.object(S3PresignedArtifactRepository.__bases__[0], "log_artifact") as mock_parent:
             repo.log_artifact("/tmp/model.pkl")
             mock_parent.assert_called_once()
 
@@ -107,9 +101,7 @@ class TestRunIdExtraction(TestCase):
 
     def test_run_id_extraction_artifacts_in_prefix(self):
         """#13: Reverse scan: s3://bucket/data/artifacts/123/abc456/artifacts → 'abc456'."""
-        repo = _create_repo(
-            artifact_uri="s3://bucket/data/artifacts/123/abc456/artifacts"
-        )
+        repo = _create_repo(artifact_uri="s3://bucket/data/artifacts/123/abc456/artifacts")
         self.assertEqual(repo._extract_run_id(), "abc456")
 
     def test_run_id_extraction_failure(self):
@@ -130,9 +122,7 @@ class TestBuildUploadPath(TestCase):
     def test_build_upload_path_with_artifact_path(self):
         """#21: _build_upload_path('/tmp/model.pkl', 'models/v1') → 'models/v1/model.pkl'."""
         repo = _create_repo()
-        self.assertEqual(
-            repo._build_upload_path("/tmp/model.pkl", "models/v1"), "models/v1/model.pkl"
-        )
+        self.assertEqual(repo._build_upload_path("/tmp/model.pkl", "models/v1"), "models/v1/model.pkl")
 
 
 class TestPresignedUploadHappyPath(TestCase):
@@ -337,9 +327,7 @@ class TestDirectoryUploads(TestCase):
         """When presigned is disabled, log_artifacts delegates to parent directly."""
         repo = _create_repo(env_enabled=False)
 
-        with mock.patch.object(
-            S3PresignedArtifactRepository.__bases__[0], "log_artifacts"
-        ) as mock_parent:
+        with mock.patch.object(S3PresignedArtifactRepository.__bases__[0], "log_artifacts") as mock_parent:
             repo.log_artifacts("/tmp/some_dir", "output")
             mock_parent.assert_called_once_with("/tmp/some_dir", "output")
 
@@ -362,9 +350,7 @@ class TestDirectoryUploads(TestCase):
         self.assertEqual(mock_http.call_count, 3)
         self.assertEqual(mock_cloud.call_count, 3)
 
-        paths_sent = sorted(
-            call[1]["json"]["path"] for call in mock_http.call_args_list
-        )
+        paths_sent = sorted(call[1]["json"]["path"] for call in mock_http.call_args_list)
         self.assertEqual(
             paths_sent,
             ["output/file1.txt", "output/file2.txt", "output/file3.txt"],
@@ -373,9 +359,7 @@ class TestDirectoryUploads(TestCase):
     @mock.patch(f"{MODULE}.cloud_storage_http_request")
     @mock.patch(f"{MODULE}.rest_utils.http_request")
     @mock.patch(f"{MODULE}._get_host_creds")
-    def test_log_artifacts_failure_propagates(
-        self, mock_get_creds, mock_http, mock_cloud
-    ):
+    def test_log_artifacts_failure_propagates(self, mock_get_creds, mock_http, mock_cloud):
         """#19: If presigned upload fails for a file, exception propagates."""
         mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response(status_code=503)

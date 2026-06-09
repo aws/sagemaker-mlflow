@@ -13,13 +13,21 @@ from unittest import TestCase
 from unittest import mock
 import os
 
-
 TEST_VALID_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
 TEST_VALID_ARN_MLFLOW_APP = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-app/xw"
 TEST_VALID_ROLE_ARN = "arn:aws:iam::0123456789:role/role-name-with-path"
 
 
 class MlflowSageMakerHelpersTest(TestCase):
+
+    def setUp(self):
+        # Ensure custom endpoint env var doesn't interfere with URL construction tests
+        self._custom_endpoint_patcher = mock.patch.dict(os.environ, {}, clear=False)
+        self._custom_endpoint_patcher.start()
+        os.environ.pop("SAGEMAKER_MLFLOW_CUSTOM_ENDPOINT", None)
+
+    def tearDown(self):
+        self._custom_endpoint_patcher.stop()
 
     def test_validate_and_parse_arn_tracking_server(self):
         arn = TEST_VALID_ARN
@@ -135,6 +143,14 @@ class MlflowSageMakerHelpersTest(TestCase):
 
 class DeprecatedArnTest(TestCase):
     """Tests for deprecated Arn class and related functions"""
+
+    def setUp(self):
+        self._custom_endpoint_patcher = mock.patch.dict(os.environ, {}, clear=False)
+        self._custom_endpoint_patcher.start()
+        os.environ.pop("SAGEMAKER_MLFLOW_CUSTOM_ENDPOINT", None)
+
+    def tearDown(self):
+        self._custom_endpoint_patcher.stop()
 
     def test_validate_and_parse_arn_happy(self):
         with warnings.catch_warnings(record=True) as w:
