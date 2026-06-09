@@ -13,4 +13,18 @@
 
 import importlib_metadata
 
+from sagemaker_mlflow.sagemaker_model_registry import (
+    InferenceSpecification,
+    evaluate,
+    log_evaluation_group,
+    log_inference_specification,
+)
+
+__all__ = [
+    "InferenceSpecification",
+    "evaluate",
+    "log_evaluation_group",
+    "log_inference_specification",
+]
+
 __version__ = importlib_metadata.version("sagemaker-mlflow")

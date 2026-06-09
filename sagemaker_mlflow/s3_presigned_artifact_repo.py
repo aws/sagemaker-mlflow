@@ -49,18 +49,12 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._use_presigned: bool = (
-            os.environ.get(_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR, "").lower() == "true"
-        )
+        self._use_presigned: bool = os.environ.get(_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR, "").lower() == "true"
         self._run_id_warning_logged: bool = False
 
     def _should_use_presigned(self) -> bool:
         """Check whether presigned upload should be attempted for this call."""
-        return (
-            self._use_presigned
-            and self.tracking_uri is not None
-            and self._extract_run_id() is not None
-        )
+        return self._use_presigned and self.tracking_uri is not None and self._extract_run_id() is not None
 
     def log_artifact(self, local_file: str, artifact_path: Optional[str] = None) -> None:
         if self._should_use_presigned():
@@ -109,7 +103,8 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
                 self._run_id_warning_logged = True
                 logger.warning(
                     "Failed to parse run_id from artifact URI: %s",
-                    self.artifact_uri, exc_info=True,
+                    self.artifact_uri,
+                    exc_info=True,
                 )
             return None
         if self._use_presigned and not self._run_id_warning_logged:
@@ -162,13 +157,12 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         """
         path = self._build_upload_path(local_file, artifact_path)
         run_id = self._extract_run_id()
+        assert run_id is not None, "run_id must be available for presigned URL upload"
 
         response = self._request_presigned_url(run_id, path)
 
         if not response.ok:
-            raise Exception(
-                f"Presigned upload URL request failed (HTTP {response.status_code})"
-            )
+            raise Exception(f"Presigned upload URL request failed (HTTP {response.status_code})")
 
         response_json = response.json()
         presigned_url = response_json.get("presigned_url")

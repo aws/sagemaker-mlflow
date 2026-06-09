@@ -4,7 +4,6 @@ from mlflow import MlflowClient
 
 from utils.boto_utils import get_default_region, get_account_id
 
-
 """ Default tracking server that a user can create
 """
 

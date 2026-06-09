@@ -1,5 +1,3 @@
-import time
-
 import mlflow
 import pytest
 
