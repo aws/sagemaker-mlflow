@@ -15,20 +15,20 @@ import importlib_metadata
 
 from sagemaker_mlflow.session import set_session, use_session
 from sagemaker_mlflow.sagemaker_model_registry import (
-  InferenceSpecification,
-  evaluate,
-  log_evaluation_group,
-  log_inference_specification,
+    InferenceSpecification,
+    evaluate,
+    log_evaluation_group,
+    log_inference_specification,
 )
 
 __version__ = importlib_metadata.version("sagemaker-mlflow")
 
 __all__ = [
-  "__version__",
-  "set_session",
-  "use_session",
-  "InferenceSpecification",
-  "evaluate",
-  "log_evaluation_group",
-  "log_inference_specification",
+    "__version__",
+    "set_session",
+    "use_session",
+    "InferenceSpecification",
+    "evaluate",
+    "log_evaluation_group",
+    "log_inference_specification",
 ]
