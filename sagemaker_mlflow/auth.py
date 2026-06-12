@@ -22,6 +22,7 @@ from botocore.awsrequest import AWSRequest
 from hashlib import sha256
 import functools
 from sagemaker_mlflow.credential_cache import CredentialCache
+from sagemaker_mlflow.session import _get_current_session
 
 PAYLOAD_BUFFER = 1024 * 1024
 # Hardcode SHA256 hash for empty string to reduce latency for requests without a body
@@ -35,14 +36,26 @@ class AuthBoto(AuthBase):
     # Class-level credential cache shared across instances
     _credential_cache = CredentialCache()
 
-    def __init__(self, region: str, service_name: str, assume_role_arn: Optional[str] = None):
+    def __init__(
+        self,
+        region: str,
+        service_name: str,
+        assume_role_arn: Optional[str] = None,
+        boto3_session: Optional[boto3.Session] = None,
+    ):
         """
         Constructor for Authorization Mechanism
         :param region: AWS region (e.g., us-west-2)
         :param service_name: AWS service name for signing
         :param assume_role_arn: ARN of the role to assume (optional)
+        :param boto3_session: boto3 Session to source credentials from
+            (optional). When ``assume_role_arn`` is also provided this session
+            is used to call STS. Resolution order: explicit kwarg >
+            ``sagemaker_mlflow.use_session``/``set_session`` context var >
+            ``boto3.Session()``.
         """
         self._assume_role_arn = assume_role_arn
+        self._provided_session = boto3_session
         self.region = region
 
         if assume_role_arn is not None:
@@ -55,10 +68,23 @@ class AuthBoto(AuthBase):
             ).get_credentials()
         else:
             # Use current session credentials
-            session = boto3.Session()
+            session = self._resolve_session()
             self.creds = session.get_credentials()
 
         self.sigv4 = SigV4Auth(self.creds, service_name, self.region)
+
+    def _resolve_session(self) -> boto3.Session:
+        """Pick the boto3 Session to source credentials from.
+
+        Order: explicit ``boto3_session=`` kwarg > context-var session set via
+        ``sagemaker_mlflow.use_session``/``set_session`` > ``boto3.Session()``.
+        """
+        if self._provided_session is not None:
+            return self._provided_session
+        ctx_session = _get_current_session()
+        if ctx_session is not None:
+            return ctx_session
+        return boto3.Session()
 
     def _get_cached_credentials(self, assume_role_arn: str) -> dict:
         """
@@ -73,7 +99,7 @@ class AuthBoto(AuthBase):
             return cached_credentials
 
         # Cache miss - fetch new credentials via STS
-        session = boto3.Session()
+        session = self._resolve_session()
         sts_client = session.client("sts")
         assumed_role_object = sts_client.assume_role(RoleArn=assume_role_arn, RoleSessionName="AuthBotoSagemakerMlFlow")
         credentials = assumed_role_object["Credentials"]

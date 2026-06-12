@@ -5,6 +5,7 @@ from botocore.awsrequest import AWSRequest
 from requests import PreparedRequest
 
 from sagemaker_mlflow.auth import AuthBoto, EMPTY_SHA256_HASH, DEFAULT_CREDENTIAL_TTL_SECONDS
+from sagemaker_mlflow.session import use_session
 
 
 class TestAuthBoto(unittest.TestCase):
@@ -293,6 +294,92 @@ class TestAuthBoto(unittest.TestCase):
 
             # Assert - TTL should be set to minimum of 300
             mock_set_credentials.assert_called_once_with(assume_role_arn, mock_credentials, 300)
+
+
+class TestAuthBotoSessionInjection(unittest.TestCase):
+
+    def setUp(self):
+        AuthBoto._credential_cache.clear()
+
+    @patch("sagemaker_mlflow.auth.boto3.Session")
+    def test_init_with_explicit_session_kwarg(self, mock_session):
+        # Arrange
+        provided = Mock()
+        provided_creds = Mock()
+        provided.get_credentials.return_value = provided_creds
+
+        # Act
+        auth_boto = AuthBoto("us-west-2", "service_name", boto3_session=provided)
+
+        # Assert: default session was not constructed; creds came from provided session
+        mock_session.assert_not_called()
+        provided.get_credentials.assert_called_once()
+        self.assertEqual(auth_boto.creds, provided_creds)
+
+    @patch("sagemaker_mlflow.auth.boto3.Session")
+    def test_init_with_context_var_session(self, mock_session):
+        # Arrange
+        ctx_session = Mock()
+        ctx_creds = Mock()
+        ctx_session.get_credentials.return_value = ctx_creds
+
+        # Act
+        with use_session(ctx_session):
+            auth_boto = AuthBoto("us-west-2", "service_name")
+
+        # Assert
+        mock_session.assert_not_called()
+        ctx_session.get_credentials.assert_called_once()
+        self.assertEqual(auth_boto.creds, ctx_creds)
+
+    @patch("sagemaker_mlflow.auth.boto3.Session")
+    def test_init_explicit_kwarg_takes_precedence_over_context_var(self, mock_session):
+        # Arrange
+        ctx_session = Mock()
+        explicit_session = Mock()
+        explicit_creds = Mock()
+        explicit_session.get_credentials.return_value = explicit_creds
+
+        # Act
+        with use_session(ctx_session):
+            auth_boto = AuthBoto("us-west-2", "service_name", boto3_session=explicit_session)
+
+        # Assert
+        mock_session.assert_not_called()
+        explicit_session.get_credentials.assert_called_once()
+        ctx_session.get_credentials.assert_not_called()
+        self.assertEqual(auth_boto.creds, explicit_creds)
+
+    @patch("sagemaker_mlflow.auth.boto3.Session")
+    def test_init_with_assume_role_uses_injected_session_for_sts(self, mock_session):
+        # Arrange: STS lives on the injected session, not on boto3.Session()
+        injected = Mock()
+        sts_client = Mock()
+        injected.client.return_value = sts_client
+        sts_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "ak",
+                "SecretAccessKey": "sk",
+                "SessionToken": "tok",
+            }
+        }
+        # The downstream session built from assumed-role creds still goes through
+        # boto3.Session(...) — that is expected and unchanged behavior.
+        mock_session.return_value.get_credentials.return_value = Mock()
+
+        assume_role_arn = "arn:aws:iam::0123456789:role/test-role"
+
+        # Act
+        AuthBoto("us-west-2", "sagemaker", assume_role_arn, boto3_session=injected)
+
+        # Assert: STS was sourced from the injected session
+        injected.client.assert_called_once_with("sts")
+        sts_client.assume_role.assert_called_once_with(
+            RoleArn=assume_role_arn, RoleSessionName="AuthBotoSagemakerMlFlow"
+        )
+        # boto3.Session was only called once — to wrap the assumed creds — never with no args
+        for c in mock_session.call_args_list:
+            self.assertNotEqual(c, call())
 
 
 if __name__ == "__main__":
