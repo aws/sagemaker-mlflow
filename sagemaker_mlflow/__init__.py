@@ -20,9 +20,6 @@ from sagemaker_mlflow.sagemaker_model_registry import (
     log_evaluation_group,
     log_inference_specification,
 )
-
-__version__ = importlib_metadata.version("sagemaker-mlflow")
-
 __all__ = [
     "__version__",
     "set_session",
