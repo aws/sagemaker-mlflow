@@ -10,7 +10,7 @@ pytestmark = [
     pytest.mark.skipif(not is_mlflow_app, reason="Scorer APIs only supported on mlflow-app"),
 ]
 
-from mlflow.genai.scorers import Correctness, delete_scorer
+from mlflow.genai.scorers import Correctness, delete_scorer  # noqa: E402
 
 
 class TestScorer:

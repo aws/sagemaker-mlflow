@@ -7,7 +7,6 @@ import requests
 
 import sagemaker_mlflow.presigned_url
 
-
 """ This test makes sure that getting the presigned url works.
 """
 

@@ -4,7 +4,6 @@ from unittest import mock, TestCase
 from sagemaker_mlflow.mlflow_sagemaker_store import MlflowSageMakerStore
 from sagemaker_mlflow.host_creds import get_host_creds
 
-
 TEST_VALID_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/xw"
 TEST_VALID_URL = "https://test-site.com"
 

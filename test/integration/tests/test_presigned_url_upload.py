@@ -40,7 +40,7 @@ def _parse_s3_uri(uri: str) -> tuple:
     """Parse s3://bucket/key into (bucket, key)."""
     if not uri.startswith("s3://"):
         raise ValueError(f"Invalid S3 URI: {uri}")
-    path = uri[len("s3://"):]
+    path = uri[len("s3://") :]
     parts = path.split("/", 1)
     return parts[0], parts[1] if len(parts) > 1 else ""
 
@@ -91,10 +91,7 @@ class TestPresignedUrlUpload:
         mlflow.set_tracking_uri(tracking_server)
 
         if not presigned_upload_supported(tracking_server):
-            pytest.skip(
-                "Tracking server does not support presigned upload endpoint "
-                "(requires mlflow/mlflow#21039)"
-            )
+            pytest.skip("Tracking server does not support presigned upload endpoint " "(requires mlflow/mlflow#21039)")
 
     def test_presigned_upload_single_file(self, setup):
         """Upload a single file via presigned URL and verify it in S3."""
@@ -169,9 +166,7 @@ class TestPresignedUrlUpload:
 
             client = mlflow.MlflowClient()
             with tempfile.TemporaryDirectory() as download_dir:
-                download_path = client.download_artifacts(
-                    run.info.run_id, file_name, download_dir
-                )
+                download_path = client.download_artifacts(run.info.run_id, file_name, download_dir)
                 with open(download_path, "r") as f:
                     downloaded = f.read()
                 assert downloaded == file_contents
