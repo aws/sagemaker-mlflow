@@ -68,6 +68,8 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
     ],
     # Depend on mlflow-skinny to avoid pulling in heavy data-science
     # dependencies (numpy, scipy, scikit-learn, pyarrow, etc.).
