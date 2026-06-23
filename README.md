@@ -24,6 +24,25 @@ To install from source:
 pip install .
 ```
 
+## Configuring the tracking server URI
+
+Set the ARN of the tracking server to as the MLflow tracking server URI,
+using either the `MLFLOW_TRACKING_URI="arn:..."` environment variable or
+`mlflow.set_tracking_uri("arn:...")`. This plugin registers itself as the
+handler for the `arn:` scheme, and MLflow knows to invoke this plugin
+for accessing the tracking server.
+
+## Assuming another role
+
+The plugin can be configured to assume a specific IAM role for invoking any AWS
+APIs. Set the environment variable `SAGEMAKER_MLFLOW_ASSUME_ROLE_ARN` to the
+ARN of the desired role to use that role.
+
+This is useful for, e.g., accessing MLflow tracking server in another AWS account:
+create a role in the same account as the tracking server, assign sufficient
+identity-based permissions to the role to access MLflow, and create a trust policy
+to allow the identity used by this plugin to assume the role.
+
 ## Custom AWS session
 
 By default, the plugin signs requests using credentials from the boto3 default
