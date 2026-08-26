@@ -26,6 +26,7 @@ endpoint (HTTP 404), so they are safe to run against older servers.
 
 import os
 import tempfile
+from unittest import mock
 
 import mlflow
 import pytest
@@ -176,6 +177,36 @@ class TestPresignedUrlUpload:
                 assert downloaded == file_contents
         finally:
             os.remove(file_path)
+
+
+@pytest.mark.parametrize(
+    ("status_code", "response_json", "expected"),
+    [
+        (200, {"presigned_upload_model_id_supported": True}, True),
+        (200, {"presigned_upload_model_id_supported": False}, False),
+        (200, {}, False),
+        (404, {}, False),
+    ],
+)
+@mock.patch("utils.presigned_utils.rest_utils.http_request")
+@mock.patch("utils.presigned_utils._get_host_creds")
+def test_presigned_logged_model_capability_uses_server_info(
+    mock_get_host_creds, mock_http_request, status_code, response_json, expected
+):
+    host_creds = mock.Mock()
+    mock_get_host_creds.return_value = host_creds
+    response = mock.Mock(status_code=status_code)
+    response.json.return_value = response_json
+    mock_http_request.return_value = response
+
+    assert presigned_logged_model_upload_supported("tracking-server-arn") is expected
+    mock_http_request.assert_called_once_with(
+        host_creds,
+        "/api/3.0/mlflow/server-info",
+        "GET",
+        raise_on_status=False,
+        max_retries=0,
+    )
 
 
 @pytest.mark.skipif(mlflow_version < (3, 0), reason="Requires MLflow >= 3.0")

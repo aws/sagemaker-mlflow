@@ -19,6 +19,8 @@ from sagemaker_mlflow.mlflow_sagemaker_helpers import SageMakerMLflowHostMetadat
 logger = logging.getLogger(__name__)
 
 _PRESIGNED_UPLOAD_ENDPOINT = "/api/2.0/mlflow/artifacts/presigned-upload-url"
+_SERVER_INFO_ENDPOINT = "/api/3.0/mlflow/server-info"
+_PRESIGNED_UPLOAD_MODEL_ID_SUPPORTED = "presigned_upload_model_id_supported"
 
 
 def _get_host_creds(tracking_server_arn: str) -> rest_utils.MlflowHostCreds:
@@ -56,16 +58,14 @@ def presigned_logged_model_upload_supported(tracking_server_arn: str) -> bool:
         host_creds = _get_host_creds(tracking_server_arn)
         response = rest_utils.http_request(
             host_creds,
-            _PRESIGNED_UPLOAD_ENDPOINT,
-            "POST",
-            json={"run_id": "probe", "model_id": "m-probe", "path": "probe.txt"},
+            _SERVER_INFO_ENDPOINT,
+            "GET",
             raise_on_status=False,
             max_retries=0,
         )
-        if response.status_code != 400:
+        if response.status_code != 200:
             return False
-        message = response.json().get("message", "")
-        return "exactly one of run_id and model_id" in message.lower()
+        return response.json().get(_PRESIGNED_UPLOAD_MODEL_ID_SUPPORTED) is True
     except Exception as e:
         logger.warning("Failed to probe logged-model presigned upload support: %s", e)
         return False
