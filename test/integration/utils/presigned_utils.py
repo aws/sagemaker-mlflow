@@ -21,15 +21,19 @@ logger = logging.getLogger(__name__)
 _PRESIGNED_UPLOAD_ENDPOINT = "/api/2.0/mlflow/artifacts/presigned-upload-url"
 
 
-def presigned_upload_supported(tracking_server_arn: str) -> bool:
-    """Probe whether the tracking server supports the presigned upload endpoint."""
+def _get_host_creds(tracking_server_arn: str) -> rest_utils.MlflowHostCreds:
     provider = SageMakerMLflowHostMetadataProvider()
     provider.set_arn(tracking_server_arn)
-    host_creds = rest_utils.MlflowHostCreds(
+    return rest_utils.MlflowHostCreds(
         host=provider.construct_tracking_server_url(),
         auth="arn",
     )
+
+
+def presigned_upload_supported(tracking_server_arn: str) -> bool:
+    """Probe whether the tracking server supports the presigned upload endpoint."""
     try:
+        host_creds = _get_host_creds(tracking_server_arn)
         response = rest_utils.http_request(
             host_creds,
             _PRESIGNED_UPLOAD_ENDPOINT,
@@ -43,4 +47,25 @@ def presigned_upload_supported(tracking_server_arn: str) -> bool:
         return response.status_code not in (404, 501)
     except Exception as e:
         logger.warning("Failed to probe presigned upload endpoint: %s", e)
+        return False
+
+
+def presigned_logged_model_upload_supported(tracking_server_arn: str) -> bool:
+    """Probe whether the server supports model-scoped presigned uploads."""
+    try:
+        host_creds = _get_host_creds(tracking_server_arn)
+        response = rest_utils.http_request(
+            host_creds,
+            _PRESIGNED_UPLOAD_ENDPOINT,
+            "POST",
+            json={"run_id": "probe", "model_id": "m-probe", "path": "probe.txt"},
+            raise_on_status=False,
+            max_retries=0,
+        )
+        if response.status_code != 400:
+            return False
+        message = response.json().get("message", "")
+        return "exactly one of run_id and model_id" in message.lower()
+    except Exception as e:
+        logger.warning("Failed to probe logged-model presigned upload support: %s", e)
         return False

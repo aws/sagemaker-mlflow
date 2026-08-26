@@ -49,6 +49,18 @@ the previous session is restored on exit (including on exception).
 that lasts for the rest of the context. Resolution order inside `AuthBoto`:
 explicit `boto3_session=` kwarg → `use_session`/`set_session` → `boto3.Session()`.
 
+## Presigned S3 artifact uploads
+
+Set `SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED=true` to route recognized S3 artifact uploads through URLs issued by the MLflow tracking server. The tracking-server request uses SageMaker authentication, while the file is streamed directly to the returned S3 URL so those uploads do not require direct S3 write credentials.
+
+```bash
+export SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED=true
+```
+
+Once a presigned upload is attempted, request or PUT failures propagate to the caller; there is no silent fallback to direct S3. When the setting is disabled, the repository retains the standard MLflow direct-S3 behavior.
+
+Presigned uploads for MLflow 3 logged-model artifacts (`log_model`) require both a client containing logged-model scope support and a tracking server containing [mlflow/mlflow#24765](https://github.com/mlflow/mlflow/pull/24765). Upgrading only one side does not enable the flow: an older client still sends the model ID as `run_id`, while a newer client sends `model_id`, which an older server does not support.
+
 ## Development details
 
 ### setup.py

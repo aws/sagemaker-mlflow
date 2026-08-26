@@ -86,29 +86,44 @@ class TestFeatureFlagAndInit(TestCase):
             mock_parent.assert_called_once()
 
 
-class TestRunIdExtraction(TestCase):
-    """Tests #11-14: run_id extraction from artifact URI."""
+class TestUploadScopeExtraction(TestCase):
+    def test_run_scopes(self):
+        cases = [
+            ("s3://bucket/123/abc456/artifacts", ("run_id", "abc456")),
+            ("s3://bucket/123/abc456/artifacts/models/v1", ("run_id", "abc456")),
+            ("s3://bucket/data/artifacts/123/abc456/artifacts", ("run_id", "abc456")),
+            ("s3://bucket/123/models/abc456/artifacts", ("run_id", "abc456")),
+            # Trace scope is intentionally unsupported until the server accepts trace_id.
+            # Sending tr-* as run_id preserves today's fail-closed 404 behavior.
+            ("s3://bucket/123/traces/tr-abc456/artifacts", ("run_id", "tr-abc456")),
+        ]
+        for artifact_uri, expected in cases:
+            with self.subTest(artifact_uri=artifact_uri):
+                repo = _create_repo(artifact_uri=artifact_uri)
+                self.assertEqual(repo._extract_upload_scope(), expected)
 
-    def test_run_id_extraction_standard(self):
-        """#11: s3://bucket/123/abc456/artifacts → 'abc456'."""
-        repo = _create_repo(artifact_uri="s3://bucket/123/abc456/artifacts")
-        self.assertEqual(repo._extract_run_id(), "abc456")
+    def test_logged_model_scopes(self):
+        cases = [
+            ("s3://bucket/123/models/m-abc456/artifacts", ("model_id", "m-abc456")),
+            ("s3://bucket/123/models/m-abc456/artifacts/model", ("model_id", "m-abc456")),
+            (
+                "s3://bucket/data/artifacts/123/models/m-abc456/artifacts",
+                ("model_id", "m-abc456"),
+            ),
+        ]
+        for artifact_uri, expected in cases:
+            with self.subTest(artifact_uri=artifact_uri):
+                repo = _create_repo(artifact_uri=artifact_uri)
+                self.assertEqual(repo._extract_upload_scope(), expected)
+                self.assertTrue(repo._should_use_presigned())
 
-    def test_run_id_extraction_with_subpath(self):
-        """#12: URI with subpath still extracts correctly."""
-        repo = _create_repo(artifact_uri="s3://bucket/123/abc456/artifacts/models/v1")
-        self.assertEqual(repo._extract_run_id(), "abc456")
-
-    def test_run_id_extraction_artifacts_in_prefix(self):
-        """#13: Reverse scan: s3://bucket/data/artifacts/123/abc456/artifacts → 'abc456'."""
-        repo = _create_repo(artifact_uri="s3://bucket/data/artifacts/123/abc456/artifacts")
-        self.assertEqual(repo._extract_run_id(), "abc456")
-
-    def test_run_id_extraction_failure(self):
-        """#14: Malformed URI → returns None → falls back to direct S3."""
+    @mock.patch(f"{MODULE}.logger.warning")
+    def test_scope_extraction_failure_warns_once_and_uses_direct_s3(self, mock_warning):
         repo = _create_repo(artifact_uri="s3://bucket/no-artifacts-segment")
-        self.assertIsNone(repo._extract_run_id())
+
+        self.assertIsNone(repo._extract_upload_scope())
         self.assertFalse(repo._should_use_presigned())
+        mock_warning.assert_called_once()
 
 
 class TestBuildUploadPath(TestCase):
@@ -148,13 +163,48 @@ class TestPresignedUploadHappyPath(TestCase):
             self.repo.log_artifact(tmp_path)
 
             mock_http.assert_called_once()
-            call_kwargs = mock_http.call_args
-            self.assertEqual(call_kwargs[1]["json"]["run_id"], "abc456")
+            self.assertEqual(
+                mock_http.call_args[1]["json"],
+                {
+                    "run_id": "abc456",
+                    "path": os.path.basename(tmp_path),
+                    "expiration": 900,
+                },
+            )
 
             mock_cloud.assert_called_once()
             cloud_call = mock_cloud.call_args
             self.assertEqual(cloud_call[0][0], "put")
             self.assertEqual(cloud_call[0][1], TEST_PRESIGNED_URL)
+        finally:
+            os.unlink(tmp_path)
+
+    @mock.patch(f"{MODULE}.cloud_storage_http_request")
+    @mock.patch(f"{MODULE}.rest_utils.http_request")
+    @mock.patch(f"{MODULE}._get_host_creds")
+    def test_logged_model_presigned_upload_happy_path(self, mock_get_creds, mock_http, mock_cloud):
+        repo = _create_repo(artifact_uri="s3://test-bucket/123/models/m-abc456/artifacts")
+        mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
+        mock_http.return_value = _mock_response()
+        mock_cloud.return_value = _mock_response()
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as f:
+            f.write(b"model_data")
+            tmp_path = f.name
+
+        try:
+            repo.log_artifact(tmp_path)
+
+            mock_http.assert_called_once()
+            self.assertEqual(
+                mock_http.call_args[1]["json"],
+                {
+                    "model_id": "m-abc456",
+                    "path": os.path.basename(tmp_path),
+                    "expiration": 900,
+                },
+            )
+            mock_cloud.assert_called_once()
         finally:
             os.unlink(tmp_path)
 

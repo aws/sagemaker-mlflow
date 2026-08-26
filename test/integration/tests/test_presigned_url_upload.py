@@ -17,6 +17,7 @@ These tests require:
   - A SageMaker MLflow tracking server (set MLFLOW_TRACKING_SERVER_URI or
     MLFLOW_TRACKING_SERVER_NAME + REGION env vars)
   - The server must have the presigned-upload-url endpoint (mlflow/mlflow#21039)
+  - The logged-model test additionally requires model_id support (mlflow/mlflow#24765)
   - AWS credentials with permission to call the tracking server and read S3
 
 Tests are skipped when the server does not support the presigned upload
@@ -28,10 +29,13 @@ import tempfile
 
 import mlflow
 import pytest
+from mlflow.models import infer_signature
 
 from utils.boto_utils import get_file_data_from_s3
-from utils.presigned_utils import presigned_upload_supported
+from utils.mlflow_utils import mlflow_version
+from utils.presigned_utils import presigned_logged_model_upload_supported, presigned_upload_supported
 from utils.random_utils import generate_uuid
+from utils.sklearn_utils import train_iris_logistic_regression_model
 
 _PRESIGNED_ENV_VAR = "SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED"
 
@@ -172,6 +176,35 @@ class TestPresignedUrlUpload:
                 assert downloaded == file_contents
         finally:
             os.remove(file_path)
+
+
+@pytest.mark.skipif(mlflow_version < (3, 0), reason="Requires MLflow >= 3.0")
+def test_presigned_upload_logged_model(tracking_server):
+    mlflow.set_tracking_uri(tracking_server)
+    if not presigned_logged_model_upload_supported(tracking_server):
+        pytest.skip("Tracking server does not support model-scoped presigned uploads (requires mlflow/mlflow#24765)")
+
+    X_train, model = train_iris_logistic_regression_model()
+    signature = infer_signature(X_train, model.predict(X_train))
+
+    with PresignedEnvContext():
+        with mlflow.start_run():
+            model_info = mlflow.sklearn.log_model(
+                sk_model=model,
+                name=f"presigned-model-{generate_uuid(8)}",
+                signature=signature,
+                input_example=X_train,
+            )
+
+    assert model_info.model_id.startswith("m-")
+    client = mlflow.MlflowClient()
+    artifact_paths = {artifact.path for artifact in client.list_logged_model_artifacts(model_info.model_id)}
+    assert "MLmodel" in artifact_paths
+
+    logged_model = client.get_logged_model(model_info.model_id)
+    bucket, prefix = _parse_s3_uri(logged_model.artifact_location)
+    mlmodel = get_file_data_from_s3(bucket, f"{prefix}/MLmodel").read().decode("utf-8")
+    assert "sklearn" in mlmodel
 
 
 class TestPresignedUrlUploadDisabled:

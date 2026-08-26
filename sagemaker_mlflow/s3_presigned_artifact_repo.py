@@ -14,7 +14,7 @@
 import logging
 import os
 import posixpath
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 from mlflow.store.artifact.s3_artifact_repo import S3ArtifactRepository
@@ -50,11 +50,11 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._use_presigned: bool = os.environ.get(_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR, "").lower() == "true"
-        self._run_id_warning_logged: bool = False
+        self._upload_scope_warning_logged: bool = False
 
     def _should_use_presigned(self) -> bool:
         """Check whether presigned upload should be attempted for this call."""
-        return self._use_presigned and self.tracking_uri is not None and self._extract_run_id() is not None
+        return self._use_presigned and self.tracking_uri is not None and self._extract_upload_scope() is not None
 
     def log_artifact(self, local_file: str, artifact_path: Optional[str] = None) -> None:
         if self._should_use_presigned():
@@ -85,10 +85,11 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
                     file_artifact_path = None
                 self.log_artifact(local_file, file_artifact_path)
 
-    def _extract_run_id(self) -> Optional[str]:
-        """Extract run_id from artifact_uri using reverse scan for last 'artifacts' segment.
+    def _extract_upload_scope(self) -> Optional[Tuple[str, str]]:
+        """Extract the API identifier field and value from the artifact URI.
 
-        Pattern: s3://bucket/.../<run_id>/artifacts/...
+        Run pattern: s3://bucket/.../<run_id>/artifacts/...
+        Logged-model pattern: s3://bucket/.../models/<model_id>/artifacts/...
         Uses reverse scan because 'artifacts' may appear in the URI prefix path
         (e.g., s3://bucket/ml-artifacts/<exp_id>/<run_id>/artifacts).
         """
@@ -97,20 +98,24 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
             parts = parsed.path.strip("/").split("/")
             for i in range(len(parts) - 1, 0, -1):
                 if parts[i] == "artifacts":
-                    return parts[i - 1]
+                    resource_id = parts[i - 1]
+                    field_name = (
+                        "model_id" if i >= 2 and parts[i - 2] == "models" and resource_id.startswith("m-") else "run_id"
+                    )
+                    return field_name, resource_id
         except Exception:
-            if self._use_presigned and not self._run_id_warning_logged:
-                self._run_id_warning_logged = True
+            if self._use_presigned and not self._upload_scope_warning_logged:
+                self._upload_scope_warning_logged = True
                 logger.warning(
-                    "Failed to parse run_id from artifact URI: %s",
+                    "Failed to parse upload scope from artifact URI: %s",
                     self.artifact_uri,
                     exc_info=True,
                 )
             return None
-        if self._use_presigned and not self._run_id_warning_logged:
-            self._run_id_warning_logged = True
+        if self._use_presigned and not self._upload_scope_warning_logged:
+            self._upload_scope_warning_logged = True
             logger.warning(
-                "Could not extract run_id from artifact URI (no 'artifacts' segment): %s. "
+                "Could not extract upload scope from artifact URI (no 'artifacts' segment): %s. "
                 "Presigned upload will not be used.",
                 self.artifact_uri,
             )
@@ -131,14 +136,14 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
             return posixpath.join(artifact_path, filename)
         return filename
 
-    def _request_presigned_url(self, run_id: str, path: str, expiration: int = 900):
+    def _request_presigned_url(self, field_name: str, resource_id: str, path: str, expiration: int = 900):
         """Request a presigned upload URL from the tracking server (SigV4-authenticated)."""
         host_creds = self._get_tracking_host_creds()
         return rest_utils.http_request(
             host_creds,
             _PRESIGNED_UPLOAD_ENDPOINT,
             "POST",
-            json={"run_id": run_id, "path": path, "expiration": expiration},
+            json={field_name: resource_id, "path": path, "expiration": expiration},
             raise_on_status=False,
             max_retries=0,
         )
@@ -156,10 +161,11 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         Streams the file directly to avoid loading large artifacts into memory.
         """
         path = self._build_upload_path(local_file, artifact_path)
-        run_id = self._extract_run_id()
-        assert run_id is not None, "run_id must be available for presigned URL upload"
+        upload_scope = self._extract_upload_scope()
+        assert upload_scope is not None, "upload scope must be available for presigned URL upload"
+        field_name, resource_id = upload_scope
 
-        response = self._request_presigned_url(run_id, path)
+        response = self._request_presigned_url(field_name, resource_id, path)
 
         if not response.ok:
             raise Exception(f"Presigned upload URL request failed (HTTP {response.status_code})")
