@@ -14,6 +14,7 @@
 import os
 import tempfile
 import unittest
+from contextlib import ExitStack
 from unittest import mock, TestCase
 
 from mlflow.utils import rest_utils
@@ -21,6 +22,8 @@ from mlflow.utils import rest_utils
 from sagemaker_mlflow.s3_presigned_artifact_repo import (
     S3PresignedArtifactRepository,
     _SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR,
+    _UploadResourceType,
+    _UploadTarget,
 )
 
 TEST_VALID_ARN = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/test-server"
@@ -64,7 +67,7 @@ class TestFeatureFlagAndInit(TestCase):
 
     def test_feature_disabled_uses_parent(self):
         """#1: No env var → super().log_artifact() called, no server call."""
-        repo = _create_repo(env_enabled=False)
+        repo = _create_repo(artifact_uri="s3://bucket/no-artifacts-segment", env_enabled=False)
 
         with mock.patch.object(S3PresignedArtifactRepository.__bases__[0], "log_artifact") as mock_parent:
             repo.log_artifact("/tmp/model.pkl")
@@ -77,7 +80,7 @@ class TestFeatureFlagAndInit(TestCase):
 
     def test_tracking_uri_none_skips_presigned(self):
         """#17: tracking_uri=None → _should_use_presigned() returns False."""
-        repo = _create_repo(tracking_uri=None)
+        repo = _create_repo(artifact_uri="s3://bucket/no-artifacts-segment", tracking_uri=None)
         repo.tracking_uri = None
         self.assertFalse(repo._should_use_presigned())
 
@@ -86,44 +89,74 @@ class TestFeatureFlagAndInit(TestCase):
             mock_parent.assert_called_once()
 
 
-class TestUploadScopeExtraction(TestCase):
-    def test_run_scopes(self):
+class TestUploadTargetExtraction(TestCase):
+    def test_run_targets(self):
         cases = [
-            ("s3://bucket/123/abc456/artifacts", ("run_id", "abc456")),
-            ("s3://bucket/123/abc456/artifacts/models/v1", ("run_id", "abc456")),
-            ("s3://bucket/data/artifacts/123/abc456/artifacts", ("run_id", "abc456")),
-            ("s3://bucket/123/models/abc456/artifacts", ("run_id", "abc456")),
-            # Trace scope is intentionally unsupported until the server accepts trace_id.
-            # Sending tr-* as run_id preserves today's fail-closed 404 behavior.
-            ("s3://bucket/123/traces/tr-abc456/artifacts", ("run_id", "tr-abc456")),
-        ]
-        for artifact_uri, expected in cases:
-            with self.subTest(artifact_uri=artifact_uri):
-                repo = _create_repo(artifact_uri=artifact_uri)
-                self.assertEqual(repo._extract_upload_scope(), expected)
-
-    def test_logged_model_scopes(self):
-        cases = [
-            ("s3://bucket/123/models/m-abc456/artifacts", ("model_id", "m-abc456")),
-            ("s3://bucket/123/models/m-abc456/artifacts/model", ("model_id", "m-abc456")),
             (
-                "s3://bucket/data/artifacts/123/models/m-abc456/artifacts",
-                ("model_id", "m-abc456"),
+                "s3://bucket/123/abc456/artifacts",
+                _UploadTarget(_UploadResourceType.RUN, "abc456"),
+            ),
+            (
+                "s3://bucket/123/abc456/artifacts/models/v1",
+                _UploadTarget(_UploadResourceType.RUN, "abc456"),
+            ),
+            (
+                "s3://bucket/data/artifacts/123/abc456/artifacts",
+                _UploadTarget(_UploadResourceType.RUN, "abc456"),
+            ),
+            (
+                "s3://bucket/123/models/abc456/artifacts",
+                _UploadTarget(_UploadResourceType.RUN, "abc456"),
             ),
         ]
         for artifact_uri, expected in cases:
             with self.subTest(artifact_uri=artifact_uri):
                 repo = _create_repo(artifact_uri=artifact_uri)
-                self.assertEqual(repo._extract_upload_scope(), expected)
+                self.assertEqual(repo._extract_upload_target(), expected)
+
+    def test_logged_model_targets(self):
+        cases = [
+            (
+                "s3://bucket/123/models/m-abc456/artifacts",
+                _UploadTarget(_UploadResourceType.LOGGED_MODEL, "m-abc456"),
+            ),
+            (
+                "s3://bucket/123/models/m-abc456/artifacts/model",
+                _UploadTarget(_UploadResourceType.LOGGED_MODEL, "m-abc456"),
+            ),
+            (
+                "s3://bucket/data/artifacts/123/models/m-abc456/artifacts",
+                _UploadTarget(_UploadResourceType.LOGGED_MODEL, "m-abc456"),
+            ),
+        ]
+        for artifact_uri, expected in cases:
+            with self.subTest(artifact_uri=artifact_uri):
+                repo = _create_repo(artifact_uri=artifact_uri)
+                self.assertEqual(repo._extract_upload_target(), expected)
                 self.assertTrue(repo._should_use_presigned())
 
-    @mock.patch(f"{MODULE}.logger.warning")
-    def test_scope_extraction_failure_warns_once_and_uses_direct_s3(self, mock_warning):
-        repo = _create_repo(artifact_uri="s3://bucket/no-artifacts-segment")
+    def test_unsupported_targets_raise_without_fallback(self):
+        cases = [
+            ("s3://bucket/no-artifacts-segment", "Could not extract a run or logged-model upload target"),
+            ("s3://bucket/prefix//artifacts", "Could not extract a run or logged-model upload target"),
+            ("s3://[invalid", "Failed to parse upload target"),
+            ("s3://bucket/123/traces/tr-abc456/artifacts", "does not support trace artifact target"),
+        ]
+        parent = S3PresignedArtifactRepository.__bases__[0]
 
-        self.assertIsNone(repo._extract_upload_scope())
-        self.assertFalse(repo._should_use_presigned())
-        mock_warning.assert_called_once()
+        for artifact_uri, message in cases:
+            with self.subTest(artifact_uri=artifact_uri):
+                repo = _create_repo(artifact_uri=artifact_uri)
+                with ExitStack() as stack:
+                    mock_parent = stack.enter_context(mock.patch.object(parent, "log_artifact"))
+                    mock_http = stack.enter_context(mock.patch(f"{MODULE}.rest_utils.http_request"))
+                    mock_cloud = stack.enter_context(mock.patch(f"{MODULE}.cloud_storage_http_request"))
+                    with self.assertRaisesRegex(ValueError, message):
+                        repo.log_artifact("/tmp/model.pkl")
+
+                mock_parent.assert_not_called()
+                mock_http.assert_not_called()
+                mock_cloud.assert_not_called()
 
 
 class TestBuildUploadPath(TestCase):
@@ -385,7 +418,7 @@ class TestDirectoryUploads(TestCase):
     @mock.patch(f"{MODULE}.rest_utils.http_request")
     @mock.patch(f"{MODULE}._get_host_creds")
     def test_presigned_upload_directory(self, mock_get_creds, mock_http, mock_cloud):
-        """#4: log_artifacts() calls self.log_artifact() per file, each via presigned URL."""
+        """#4: log_artifacts() resolves one target and uploads every file with it."""
         mock_get_creds.return_value = rest_utils.MlflowHostCreds(host=TEST_TRACKING_URL, auth="arn")
         mock_http.return_value = _mock_response()
         mock_cloud.return_value = _mock_response()
@@ -395,10 +428,16 @@ class TestDirectoryUploads(TestCase):
                 with open(os.path.join(tmp_dir, name), "w") as f:
                     f.write("content")
 
-            self.repo.log_artifacts(tmp_dir, "output")
+            with mock.patch.object(
+                self.repo, "_extract_upload_target", wraps=self.repo._extract_upload_target
+            ) as mock_extract:
+                self.repo.log_artifacts(tmp_dir, "output")
 
+        mock_extract.assert_called_once_with()
         self.assertEqual(mock_http.call_count, 3)
         self.assertEqual(mock_cloud.call_count, 3)
+        self.assertTrue(all(call[1]["json"]["run_id"] == "abc456" for call in mock_http.call_args_list))
+        self.assertTrue(all("model_id" not in call[1]["json"] for call in mock_http.call_args_list))
 
         paths_sent = sorted(call[1]["json"]["path"] for call in mock_http.call_args_list)
         self.assertEqual(

@@ -14,7 +14,9 @@
 import logging
 import os
 import posixpath
-from typing import Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
 from urllib.parse import urlparse
 
 from mlflow.store.artifact.s3_artifact_repo import S3ArtifactRepository
@@ -30,6 +32,17 @@ _SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR = "SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLE
 _PRESIGNED_UPLOAD_ENDPOINT = "/api/2.0/mlflow/artifacts/presigned-upload-url"
 
 
+class _UploadResourceType(Enum):
+    RUN = "run_id"
+    LOGGED_MODEL = "model_id"
+
+
+@dataclass(frozen=True)
+class _UploadTarget:
+    resource_type: _UploadResourceType
+    resource_id: str
+
+
 class S3PresignedArtifactRepository(S3ArtifactRepository):
     """S3 artifact repository with optional presigned URL upload support.
 
@@ -38,27 +51,26 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
     to have direct S3 write credentials.
 
     When the SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED environment variable is set to
-    "true", all artifact uploads use presigned URLs. If the presigned upload fails
-    for any reason (server doesn't support the endpoint, network error, S3 PUT
-    failure), the exception propagates to the caller — there is no silent fallback
-    to direct S3.
+    "true" and a tracking URI is available, recognized run and logged-model artifact
+    uploads use presigned URLs. Unsupported targets and presigned upload failures
+    propagate to the caller — there is no silent fallback to direct S3.
 
-    When the environment variable is not set (the default), all behavior is
-    identical to the parent S3ArtifactRepository.
+    When the environment variable is not set (the default), or when no tracking URI
+    is available, behavior is identical to the parent S3ArtifactRepository.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._use_presigned: bool = os.environ.get(_SAGEMAKER_PRESIGNED_URL_UPLOAD_ENV_VAR, "").lower() == "true"
-        self._upload_scope_warning_logged: bool = False
 
     def _should_use_presigned(self) -> bool:
         """Check whether presigned upload should be attempted for this call."""
-        return self._use_presigned and self.tracking_uri is not None and self._extract_upload_scope() is not None
+        return self._use_presigned and self.tracking_uri is not None
 
     def log_artifact(self, local_file: str, artifact_path: Optional[str] = None) -> None:
         if self._should_use_presigned():
-            self._upload_via_presigned_url(local_file, artifact_path)
+            upload_target = self._extract_upload_target()
+            self._upload_via_presigned_url(upload_target, local_file, artifact_path)
         else:
             super().log_artifact(local_file, artifact_path)
 
@@ -67,6 +79,7 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
             super().log_artifacts(local_dir, artifact_path)
             return
 
+        upload_target = self._extract_upload_target()
         local_dir = os.path.abspath(local_dir)
         for root, _, filenames in os.walk(local_dir):
             if root == local_dir:
@@ -83,10 +96,10 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
                     file_artifact_path = rel_dir.replace(os.sep, "/")
                 else:
                     file_artifact_path = None
-                self.log_artifact(local_file, file_artifact_path)
+                self._upload_via_presigned_url(upload_target, local_file, file_artifact_path)
 
-    def _extract_upload_scope(self) -> Optional[Tuple[str, str]]:
-        """Extract the API identifier field and value from the artifact URI.
+    def _extract_upload_target(self) -> _UploadTarget:
+        """Extract the owning resource type and ID from the artifact URI.
 
         Run pattern: s3://bucket/.../<run_id>/artifacts/...
         Logged-model pattern: s3://bucket/.../models/<model_id>/artifacts/...
@@ -94,32 +107,30 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         (e.g., s3://bucket/ml-artifacts/<exp_id>/<run_id>/artifacts).
         """
         try:
-            parsed = urlparse(self.artifact_uri)
-            parts = parsed.path.strip("/").split("/")
-            for i in range(len(parts) - 1, 0, -1):
-                if parts[i] == "artifacts":
-                    resource_id = parts[i - 1]
-                    field_name = (
-                        "model_id" if i >= 2 and parts[i - 2] == "models" and resource_id.startswith("m-") else "run_id"
-                    )
-                    return field_name, resource_id
-        except Exception:
-            if self._use_presigned and not self._upload_scope_warning_logged:
-                self._upload_scope_warning_logged = True
-                logger.warning(
-                    "Failed to parse upload scope from artifact URI: %s",
-                    self.artifact_uri,
-                    exc_info=True,
+            parts = urlparse(self.artifact_uri).path.strip("/").split("/")
+        except Exception as exc:
+            raise ValueError(f"Failed to parse upload target from artifact URI: {self.artifact_uri}") from exc
+
+        for i in range(len(parts) - 1, 0, -1):
+            if parts[i] != "artifacts":
+                continue
+
+            resource_id = parts[i - 1]
+            if not resource_id:
+                continue
+            if i >= 2 and parts[i - 2] == "models" and resource_id.startswith("m-"):
+                return _UploadTarget(_UploadResourceType.LOGGED_MODEL, resource_id)
+            if i >= 2 and parts[i - 2] == "traces" and resource_id.startswith("tr-"):
+                raise ValueError(
+                    f"Presigned upload does not support trace artifact target '{resource_id}' from URI: "
+                    f"{self.artifact_uri}"
                 )
-            return None
-        if self._use_presigned and not self._upload_scope_warning_logged:
-            self._upload_scope_warning_logged = True
-            logger.warning(
-                "Could not extract upload scope from artifact URI (no 'artifacts' segment): %s. "
-                "Presigned upload will not be used.",
-                self.artifact_uri,
-            )
-        return None
+            return _UploadTarget(_UploadResourceType.RUN, resource_id)
+
+        raise ValueError(
+            "Could not extract a run or logged-model upload target from artifact URI "
+            f"(expected .../<resource_id>/artifacts): {self.artifact_uri}"
+        )
 
     def _get_tracking_host_creds(self) -> rest_utils.MlflowHostCreds:
         """Build MlflowHostCreds for the SageMaker tracking server."""
@@ -136,19 +147,21 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
             return posixpath.join(artifact_path, filename)
         return filename
 
-    def _request_presigned_url(self, field_name: str, resource_id: str, path: str, expiration: int = 900):
+    def _request_presigned_url(self, upload_target: _UploadTarget, path: str, expiration: int = 900):
         """Request a presigned upload URL from the tracking server (SigV4-authenticated)."""
         host_creds = self._get_tracking_host_creds()
         return rest_utils.http_request(
             host_creds,
             _PRESIGNED_UPLOAD_ENDPOINT,
             "POST",
-            json={field_name: resource_id, "path": path, "expiration": expiration},
+            json={upload_target.resource_type.value: upload_target.resource_id, "path": path, "expiration": expiration},
             raise_on_status=False,
             max_retries=0,
         )
 
-    def _upload_via_presigned_url(self, local_file: str, artifact_path: Optional[str]) -> None:
+    def _upload_via_presigned_url(
+        self, upload_target: _UploadTarget, local_file: str, artifact_path: Optional[str]
+    ) -> None:
         """Upload a file via a presigned URL.
 
         Two distinct HTTP paths:
@@ -161,11 +174,7 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         Streams the file directly to avoid loading large artifacts into memory.
         """
         path = self._build_upload_path(local_file, artifact_path)
-        upload_scope = self._extract_upload_scope()
-        assert upload_scope is not None, "upload scope must be available for presigned URL upload"
-        field_name, resource_id = upload_scope
-
-        response = self._request_presigned_url(field_name, resource_id, path)
+        response = self._request_presigned_url(upload_target, path)
 
         if not response.ok:
             raise Exception(f"Presigned upload URL request failed (HTTP {response.status_code})")

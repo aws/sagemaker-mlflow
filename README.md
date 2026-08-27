@@ -59,6 +59,8 @@ export SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED=true
 
 Once a presigned upload is attempted, request or PUT failures propagate to the caller; there is no silent fallback to direct S3. When the setting is disabled, the repository retains the standard MLflow direct-S3 behavior.
 
+When the setting is enabled and the repository has a tracking URI, artifact roots that cannot be identified as run or logged-model targets fail before any server or S3 request; they do not fall back to direct S3. Trace artifact targets are not yet supported and fail closed in the same way. Repositories without a tracking URI retain the standard MLflow direct-S3 behavior.
+
 Presigned uploads for MLflow 3 logged-model artifacts (`log_model`) require both a client containing logged-model scope support and a tracking server containing [mlflow/mlflow#24765](https://github.com/mlflow/mlflow/pull/24765). Upgrading only one side does not enable the flow: an older client still sends the model ID as `run_id`, while a newer client sends `model_id`, which an older server does not support.
 
 ## Development details
