@@ -20,8 +20,8 @@ These tests require:
   - The logged-model test additionally requires model_id support (mlflow/mlflow#24765)
   - AWS credentials with permission to call the tracking server and read S3
 
-Tests are skipped when the server does not support the presigned upload
-endpoint (HTTP 404), so they are safe to run against older servers.
+Tests are skipped when the server does not advertise the corresponding
+presigned-upload request contract, so they are safe to run against older servers.
 """
 
 import os
@@ -34,7 +34,7 @@ from mlflow.models import infer_signature
 
 from utils.boto_utils import get_file_data_from_s3
 from utils.mlflow_utils import mlflow_version
-from utils.presigned_utils import presigned_logged_model_upload_supported, presigned_upload_supported
+from utils.presigned_utils import PresignedUploadCapabilities, get_presigned_upload_capabilities
 from utils.random_utils import generate_uuid
 from utils.sklearn_utils import train_iris_logistic_regression_model
 
@@ -84,18 +84,23 @@ class PresignedEnvContext:
             os.environ.pop(_PRESIGNED_ENV_VAR, None)
 
 
+@pytest.fixture(scope="module")
+def presigned_capabilities(tracking_server):
+    return get_presigned_upload_capabilities(tracking_server)
+
+
 class TestPresignedUrlUpload:
     """Integration tests for presigned URL artifact uploads.
 
     All tests in this class are skipped if the tracking server does not
-    support the presigned-upload-url endpoint (mlflow/mlflow#21039).
+    advertise run-scoped presigned-upload support.
     """
 
     @pytest.fixture(scope="class")
-    def setup(self, tracking_server):
+    def setup(self, tracking_server, presigned_capabilities):
         mlflow.set_tracking_uri(tracking_server)
 
-        if not presigned_upload_supported(tracking_server):
+        if not presigned_capabilities.run_id_supported:
             pytest.skip("Tracking server does not support presigned upload endpoint " "(requires mlflow/mlflow#21039)")
 
     def test_presigned_upload_single_file(self, setup):
@@ -182,15 +187,29 @@ class TestPresignedUrlUpload:
 @pytest.mark.parametrize(
     ("status_code", "response_json", "expected"),
     [
-        (200, {"presigned_upload_model_id_supported": True}, True),
-        (200, {"presigned_upload_model_id_supported": False}, False),
-        (200, {}, False),
-        (404, {}, False),
+        (
+            200,
+            {
+                "presigned_upload_run_id_supported": True,
+                "presigned_upload_model_id_supported": True,
+            },
+            PresignedUploadCapabilities(run_id_supported=True, model_id_supported=True),
+        ),
+        (
+            200,
+            {
+                "presigned_upload_run_id_supported": True,
+                "presigned_upload_model_id_supported": False,
+            },
+            PresignedUploadCapabilities(run_id_supported=True, model_id_supported=False),
+        ),
+        (200, {}, PresignedUploadCapabilities(run_id_supported=False, model_id_supported=False)),
+        (404, {}, PresignedUploadCapabilities(run_id_supported=False, model_id_supported=False)),
     ],
 )
 @mock.patch("utils.presigned_utils.rest_utils.http_request")
 @mock.patch("utils.presigned_utils._get_host_creds")
-def test_presigned_logged_model_capability_uses_server_info(
+def test_presigned_upload_capabilities_use_server_info(
     mock_get_host_creds, mock_http_request, status_code, response_json, expected
 ):
     host_creds = mock.Mock()
@@ -199,7 +218,7 @@ def test_presigned_logged_model_capability_uses_server_info(
     response.json.return_value = response_json
     mock_http_request.return_value = response
 
-    assert presigned_logged_model_upload_supported("tracking-server-arn") is expected
+    assert get_presigned_upload_capabilities("tracking-server-arn") == expected
     mock_http_request.assert_called_once_with(
         host_creds,
         "/api/3.0/mlflow/server-info",
@@ -209,10 +228,39 @@ def test_presigned_logged_model_capability_uses_server_info(
     )
 
 
+@mock.patch("utils.presigned_utils.logger.warning")
+@mock.patch("utils.presigned_utils.rest_utils.http_request")
+@mock.patch("utils.presigned_utils._get_host_creds")
+def test_presigned_upload_capabilities_fail_closed_on_invalid_json(
+    mock_get_host_creds, mock_http_request, mock_warning
+):
+    mock_get_host_creds.return_value = mock.Mock()
+    response = mock.Mock(status_code=200)
+    response.json.side_effect = ValueError("invalid JSON")
+    mock_http_request.return_value = response
+
+    assert get_presigned_upload_capabilities("tracking-server-arn") == PresignedUploadCapabilities(False, False)
+    mock_http_request.assert_called_once()
+    mock_warning.assert_called_once()
+
+
+@mock.patch("utils.presigned_utils.logger.warning")
+@mock.patch("utils.presigned_utils.rest_utils.http_request", side_effect=RuntimeError("connection failed"))
+@mock.patch("utils.presigned_utils._get_host_creds")
+def test_presigned_upload_capabilities_fail_closed_on_request_error(
+    mock_get_host_creds, mock_http_request, mock_warning
+):
+    mock_get_host_creds.return_value = mock.Mock()
+
+    assert get_presigned_upload_capabilities("tracking-server-arn") == PresignedUploadCapabilities(False, False)
+    mock_http_request.assert_called_once()
+    mock_warning.assert_called_once()
+
+
 @pytest.mark.skipif(mlflow_version < (3, 0), reason="Requires MLflow >= 3.0")
-def test_presigned_upload_logged_model(tracking_server):
+def test_presigned_upload_logged_model(tracking_server, presigned_capabilities):
     mlflow.set_tracking_uri(tracking_server)
-    if not presigned_logged_model_upload_supported(tracking_server):
+    if not presigned_capabilities.model_id_supported:
         pytest.skip("Tracking server does not support model-scoped presigned uploads (requires mlflow/mlflow#24765)")
 
     X_train, model = train_iris_logistic_regression_model()
