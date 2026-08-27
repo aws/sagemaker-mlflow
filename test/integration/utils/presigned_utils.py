@@ -12,35 +12,51 @@
 # language governing permissions and limitations under the License.
 
 import logging
+from dataclasses import dataclass
 
 from mlflow.utils import rest_utils
 from sagemaker_mlflow.mlflow_sagemaker_helpers import SageMakerMLflowHostMetadataProvider
 
 logger = logging.getLogger(__name__)
 
-_PRESIGNED_UPLOAD_ENDPOINT = "/api/2.0/mlflow/artifacts/presigned-upload-url"
+_SERVER_INFO_ENDPOINT = "/api/3.0/mlflow/server-info"
+_PRESIGNED_UPLOAD_RUN_ID_SUPPORTED = "presigned_upload_run_id_supported"
+_PRESIGNED_UPLOAD_MODEL_ID_SUPPORTED = "presigned_upload_model_id_supported"
 
 
-def presigned_upload_supported(tracking_server_arn: str) -> bool:
-    """Probe whether the tracking server supports the presigned upload endpoint."""
+@dataclass(frozen=True)
+class PresignedUploadCapabilities:
+    run_id_supported: bool
+    model_id_supported: bool
+
+
+def _get_host_creds(tracking_server_arn: str) -> rest_utils.MlflowHostCreds:
     provider = SageMakerMLflowHostMetadataProvider()
     provider.set_arn(tracking_server_arn)
-    host_creds = rest_utils.MlflowHostCreds(
+    return rest_utils.MlflowHostCreds(
         host=provider.construct_tracking_server_url(),
         auth="arn",
     )
+
+
+def get_presigned_upload_capabilities(tracking_server_arn: str) -> PresignedUploadCapabilities:
+    """Read the presigned-upload request contracts advertised by the server."""
     try:
+        host_creds = _get_host_creds(tracking_server_arn)
         response = rest_utils.http_request(
             host_creds,
-            _PRESIGNED_UPLOAD_ENDPOINT,
-            "POST",
-            json={"run_id": "probe", "path": "probe.txt"},
+            _SERVER_INFO_ENDPOINT,
+            "GET",
             raise_on_status=False,
             max_retries=0,
         )
-        # 404 = endpoint doesn't exist, 501 = not implemented
-        # Anything else (400, 403, etc.) means the endpoint exists
-        return response.status_code not in (404, 501)
+        if response.status_code != 200:
+            return PresignedUploadCapabilities(False, False)
+        server_info = response.json()
+        return PresignedUploadCapabilities(
+            run_id_supported=server_info.get(_PRESIGNED_UPLOAD_RUN_ID_SUPPORTED) is True,
+            model_id_supported=server_info.get(_PRESIGNED_UPLOAD_MODEL_ID_SUPPORTED) is True,
+        )
     except Exception as e:
-        logger.warning("Failed to probe presigned upload endpoint: %s", e)
-        return False
+        logger.warning("Failed to read presigned upload capabilities: %s", e)
+        return PresignedUploadCapabilities(False, False)
