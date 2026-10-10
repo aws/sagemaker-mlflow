@@ -14,6 +14,7 @@
 import importlib_metadata
 
 from sagemaker_mlflow.session import set_session, use_session
+from sagemaker_mlflow.auth_client import SageMakerMlflowAuthClient
 from sagemaker_mlflow.sagemaker_model_registry import (
     InferenceSpecification,
     LineageInputs,
@@ -29,6 +30,7 @@ __all__ = [
     "__version__",
     "set_session",
     "use_session",
+    "SageMakerMlflowAuthClient",
     "InferenceSpecification",
     "LineageInputs",
     "evaluate",

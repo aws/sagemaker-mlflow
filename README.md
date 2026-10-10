@@ -19,6 +19,13 @@ To install with the full `mlflow` dependency set:
 pip install sagemaker-mlflow[full]
 ```
 
+> **Note:** The default install depends on `mlflow-skinny`. Most of the plugin
+> (tracking store, auth provider, artifact repository, presigned uploads) works
+> under skinny. The access-control admin client,
+> [`SageMakerMlflowAuthClient`](#access-control-admin-client), is the exception:
+> it extends MLflow's auth-server package, which is only in full `mlflow`, so it
+> requires `sagemaker-mlflow[full]`.
+
 To install from source:
 ```
 pip install .
@@ -67,12 +74,59 @@ When the setting is enabled and the repository has a tracking URI, artifact root
 
 Presigned uploads for MLflow 3 logged-model artifacts (`log_model`) require both a client containing logged-model scope support and a tracking server containing [mlflow/mlflow#24765](https://github.com/mlflow/mlflow/pull/24765). Upgrading only one side does not enable the flow: an older client still sends the model ID as `run_id`, while a newer client sends `model_id`, which an older server does not support.
 
+## Access control admin client
+
+> **Requires `sagemaker-mlflow[full]`.** `SageMakerMlflowAuthClient` extends
+> `mlflow.server.auth.client.AuthServiceClient`, which ships only with full
+> `mlflow` (not `mlflow-skinny`). Importing `sagemaker_mlflow` stays safe under
+> skinny; constructing the client without the auth-server package raises a clear
+> error pointing you to `pip install 'sagemaker-mlflow[full]'`.
+
+For SageMaker MLflow apps with fine-grained access control (FGAC) enabled,
+`SageMakerMlflowAuthClient` is the admin client for managing MLflow RBAC. It is
+a thin specialization of MLflow's
+[`AuthServiceClient`](https://mlflow.org/docs/latest/api_reference/auth/python-api.html#mlflow.server.auth.client.AuthServiceClient)
+with three SageMaker-specific differences:
+
+* **IAM identity, not passwords.** A SageMaker MLflow app bridges AWS IAM to
+  MLflow's user model: the IAM *role* ARN is the MLflow username and callers
+  authenticate with SigV4. `create_user` takes only a role ARN (no password),
+  and `update_user_password` is unsupported.
+* **Role ARNs only.** Every method that names a user requires a well-formed IAM
+  role ARN (pathless); user ARNs and other inputs are rejected client-side.
+* **Tracking URI resolution.** The target app is taken from the active MLflow
+  tracking URI (`mlflow.get_tracking_uri()`), the same as the other plugin
+  helpers; pass `tracking_uri=` to override. The caller must be authenticated as
+  the app's Platform Admin (the `AdminPrincipalArn` configured via
+  `AccessControlConfig`).
+
+The full RBAC surface of `AuthServiceClient` (roles, role permissions, role
+assignments, per-user permission grants) is inherited unchanged.
+
+```python
+import mlflow
+from sagemaker_mlflow import SageMakerMlflowAuthClient
+
+mlflow.set_tracking_uri(
+    "arn:aws:sagemaker:us-west-2:123456789012:mlflow-app/my-app"
+)
+client = SageMakerMlflowAuthClient()
+
+# Register an IAM role as an MLflow user and promote it to Platform Admin.
+client.create_user("arn:aws:iam::123456789012:role/AliceDSRole")
+client.update_user_admin("arn:aws:iam::123456789012:role/AliceDSRole", is_admin=True)
+
+# Inherited RBAC surface: create a role and assign it.
+role = client.create_role(workspace="default", name="viewers")
+client.assign_role("arn:aws:iam::123456789012:role/AliceDSRole", role.id)
+```
+
 ## Development details
 
 ### setup.py
 
 `setup.py` Contains the primary entry points for the sdk. 
-`install_requires` Installs `mlflow-skinny` (lightweight) by default. The `[full]` extra installs the full `mlflow` package.
+`install_requires` Installs `mlflow-skinny` (lightweight) by default. The `[full]` extra installs the full `mlflow` package, which is required by `SageMakerMlflowAuthClient` (it extends MLflow's auth-server package).
 `entry_points` Contains the entry points for the sdk. See https://mlflow.org/docs/latest/plugins.html#defining-a-plugin
 for more details.
 

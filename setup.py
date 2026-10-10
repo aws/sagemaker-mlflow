@@ -74,9 +74,13 @@ setup(
     # Depend on mlflow-skinny to avoid pulling in heavy data-science
     # dependencies (numpy, scipy, scikit-learn, pyarrow, etc.).
     # Users who need the full mlflow dependency set can install
-    # sagemaker-mlflow[full].
+    # sagemaker-mlflow[full]. In particular, SageMakerMlflowAuthClient extends
+    # mlflow.server.auth.client.AuthServiceClient, which ships only with full
+    # mlflow (not mlflow-skinny), so the auth client requires sagemaker-mlflow[full].
     install_requires=["boto3>=1.34", "mlflow-skinny>=2.8"],
     extras_require={
+        # Full mlflow pulls in the auth-server package (mlflow.server.auth),
+        # which SageMakerMlflowAuthClient requires.
         "full": ["mlflow>=2.8"],
         "test": test_requirements,
         "test_prerelease": test_prerelease_requirements,
