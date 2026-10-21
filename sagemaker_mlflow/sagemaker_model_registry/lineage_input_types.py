@@ -8,12 +8,14 @@
 
 """Types for declaring the upstream data inputs of a logged model.
 
-These types are for editor ergonomics only. The server plugin owns resolution
-of every input type, so an unrecognized ``Type`` is forwarded as-is rather than
-rejected -- that is what lets a new input type ship without a client release.
+The set of input types is closed. The server plugin owns resolution, and it
+skips a declaration it cannot resolve with a warning the customer never sees,
+so an unrecognized ``Type`` -- or one missing its identifier -- is rejected at
+the call site instead. Adding a type means releasing the client alongside the
+server resolver.
 """
 
-from typing import Any, Dict, List, Literal, TypedDict, Union
+from typing import List, Literal, TypedDict, Union
 
 
 class FeatureGroupInput(TypedDict, total=False):
@@ -38,9 +40,20 @@ class S3TableSnapshotInput(TypedDict, total=False):
     Name: str
 
 
-# ``Dict[str, Any]`` is a deliberate escape hatch: an input type the installed
-# client predates is still a valid declaration.
-LineageInput = Union[FeatureGroupInput, S3TableSnapshotInput, Dict[str, Any]]
+LineageInput = Union[FeatureGroupInput, S3TableSnapshotInput]
 
 # What ``log_lineage_inputs`` accepts: the inputs directly, as a list.
 LineageInputs = List[LineageInput]
+
+# The declaration is only meaningful for a type the server plugin can resolve.
+# Anything else is rejected at the call site rather than written to the artifact
+# and silently dropped server-side, where the customer never sees the warning.
+# Adding a type here requires a client release alongside the server resolver.
+SUPPORTED_INPUT_TYPES = frozenset({"FeatureGroup", "S3TableSnapshot"})
+
+# The identifier each type is resolved by. A declaration missing it would be
+# skipped server-side for the same invisible reason.
+REQUIRED_INPUT_FIELDS = {
+    "FeatureGroup": "Arn",
+    "S3TableSnapshot": "Uri",
+}

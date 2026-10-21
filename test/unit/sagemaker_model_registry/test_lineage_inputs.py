@@ -82,11 +82,16 @@ class TestLogLineageInputs:
         assert uri == f"{ARTIFACT_LOCATION}/{ARTIFACT_NAME}"
 
     @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
-    def test_forwards_unknown_type_unchanged(self, mock_client_cls):
-        """A type newer than the client must survive the round trip untouched."""
+    def test_optional_fields_are_preserved(self, mock_client_cls):
+        """Fields beyond the required identifier pass through untouched."""
         _, captured = _mock_client(mock_client_cls)
 
-        entry = {"Type": "SomeFutureType", "Whatever": {"nested": ["value"]}}
+        entry = {
+            "Type": "S3TableSnapshot",
+            "Uri": "s3://bucket/table/",
+            "SnapshotId": "7281539204561098345",
+            "Name": "flight-delay",
+        }
         log_lineage_inputs("m-123", lineage_inputs=[entry])
 
         assert captured["content"]["Inputs"] == [entry]
@@ -115,6 +120,12 @@ class TestInputsValidation:
             (["not-a-dict"], TypeError),
             ([{"Arn": FEATURE_GROUP_ARN}], ValueError),
             ([{"Type": "", "Arn": FEATURE_GROUP_ARN}], ValueError),
+            ([{"Type": "SomeFutureType", "Arn": FEATURE_GROUP_ARN}], ValueError),
+            ([{"Type": "FeatureGrpup", "Arn": FEATURE_GROUP_ARN}], ValueError),
+            ([{"Type": "FeatureGroup"}], ValueError),
+            ([{"Type": "FeatureGroup", "Arn": ""}], ValueError),
+            ([{"Type": "S3TableSnapshot"}], ValueError),
+            ([{"Type": "S3TableSnapshot", "Uri": ""}], ValueError),
         ],
     )
     @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
@@ -141,5 +152,32 @@ class TestInputsValidation:
 
         with pytest.raises(TypeError, match="must be a list of input dicts"):
             log_lineage_inputs("m-123", lineage_inputs=envelope)
+
+        mock_client.log_model_artifact.assert_not_called()
+
+    @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
+    def test_unsupported_type_names_the_supported_ones(self, mock_client_cls):
+        """A typo must fail at the call site, not vanish at registration."""
+        mock_client, _ = _mock_client(mock_client_cls)
+
+        with pytest.raises(ValueError, match="unsupported Type 'FeatureGrpup'") as excinfo:
+            log_lineage_inputs(
+                "m-123", lineage_inputs=[{"Type": "FeatureGrpup", "Arn": FEATURE_GROUP_ARN}]
+            )
+
+        assert "FeatureGroup" in str(excinfo.value)
+        assert "S3TableSnapshot" in str(excinfo.value)
+        mock_client.log_model_artifact.assert_not_called()
+
+    @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
+    def test_one_bad_entry_rejects_the_whole_declaration(self, mock_client_cls):
+        """Nothing is written if any entry is unresolvable -- no partial lineage."""
+        mock_client, _ = _mock_client(mock_client_cls)
+
+        with pytest.raises(ValueError):
+            log_lineage_inputs("m-123", lineage_inputs=[
+                {"Type": "FeatureGroup", "Arn": FEATURE_GROUP_ARN},
+                {"Type": "NotAType", "Arn": FEATURE_GROUP_ARN},
+            ])
 
         mock_client.log_model_artifact.assert_not_called()
