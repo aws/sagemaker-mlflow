@@ -43,9 +43,15 @@ def log_lineage_inputs(model_id: str, lineage_inputs: LineageInputs) -> str:
     Args:
         model_id: MLflow logged model ID (e.g. "m-abc123").
         lineage_inputs: List of declared inputs. Each entry needs a ``Type``
-            plus the identifier fields for that type -- ``Arn`` for
-            ``FeatureGroup``, ``Uri`` (and optionally ``SnapshotId``) for
-            ``S3TableSnapshot``.
+            plus the identifier field for that type -- ``Arn`` for both
+            ``FeatureGroup`` and ``HubDataSet``. A ``FeatureGroup`` entry may also
+            carry ``SnapshotId``, the Iceberg snapshot of its offline store that
+            the model trained on; omit it when the offline store is not Iceberg.
+            A ``HubDataSet`` ``Arn`` should be a versioned hub dataset ARN
+            (``...:hub-content/<hub>/DataSet/<name>/<version>``), and may carry
+            ``QueryString``, the Athena query that built the dataset. Declare
+            feature groups or a hub dataset, not both. An unversioned hub dataset
+            ARN, or a mix of the two types, is logged with a warning.
 
     Returns:
         The artifact URI of the uploaded artifact.
@@ -59,8 +65,11 @@ def log_lineage_inputs(model_id: str, lineage_inputs: LineageInputs) -> str:
         >>> log_lineage_inputs(
         ...     model_info.model_id,
         ...     lineage_inputs=[
-        ...         {"Type": "FeatureGroup", "Arn": "arn:aws:sagemaker:..."},
-        ...         {"Type": "S3TableSnapshot", "Uri": "s3://bucket/table/"},
+        ...         {
+        ...             "Type": "FeatureGroup",
+        ...             "Arn": "arn:aws:sagemaker:...",
+        ...             "SnapshotId": "7281539204561098345",
+        ...         },
         ...     ],
         ... )
     """
@@ -119,3 +128,32 @@ def _validate_inputs(lineage_inputs: LineageInputs) -> None:
                 f"lineage_inputs[{index}] of Type {input_type!r} is missing a "
                 f"non-empty {required_field!r}, which is how it is resolved."
             )
+
+        # Warn rather than raise: this runs at the end of a training script, and the
+        # model is still worth logging. The server would skip this input, so the
+        # warning is the caller's only notice that it will have no lineage.
+        if input_type == "HubDataSet" and not _is_versioned_hub_dataset_arn(entry["Arn"]):
+            logger.warning(
+                f"lineage_inputs[{index}] has HubDataSet Arn {entry['Arn']!r}, which is not a "
+                "versioned hub dataset ARN, so it will not be linked into lineage. Expected "
+                "'arn:aws:sagemaker:<region>:<account>:hub-content/<hub>/DataSet/<name>/<version>'."
+            )
+
+    # A model trains either on feature groups directly or on a hub dataset built from
+    # them. Declaring both leaves no way to tell which one actually fed the model.
+    declared_types = {entry["Type"] for entry in lineage_inputs}
+    if {"FeatureGroup", "HubDataSet"} <= declared_types:
+        logger.warning(
+            "lineage_inputs mixes FeatureGroup and HubDataSet entries. Declare either the "
+            "feature groups the model trained on directly, or the hub dataset it trained "
+            "on, not both."
+        )
+
+
+def _is_versioned_hub_dataset_arn(arn) -> bool:
+    """True for arn:...:hub-content/<hub>/DataSet/<name>/<version>."""
+    if not isinstance(arn, str):
+        return False
+    _, sep, tail = arn.partition(":hub-content/")
+    parts = tail.split("/")
+    return bool(sep) and len(parts) == 4 and parts[1] == "DataSet" and all(parts)

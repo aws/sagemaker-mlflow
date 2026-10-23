@@ -21,6 +21,9 @@ from sagemaker_mlflow.sagemaker_model_registry.lineage_inputs import (
 ARTIFACT_LOCATION = "s3://bucket/models/m-123/artifacts"
 
 FEATURE_GROUP_ARN = "arn:aws:sagemaker:us-west-2:000000000000:feature-group/features-v0-0-2"
+HUB_DATASET_ARN = (
+    "arn:aws:sagemaker:us-west-2:000000000000:hub-content/my-hub/DataSet/flight-delay-737-dep15/0.0.2"
+)
 
 
 def _mock_client(mock_client_cls):
@@ -48,14 +51,7 @@ class TestLogLineageInputs:
         """The caller passes a list; the artifact wraps it in the wire envelope."""
         mock_client, captured = _mock_client(mock_client_cls)
 
-        inputs = [
-            {"Type": "FeatureGroup", "Arn": FEATURE_GROUP_ARN},
-            {
-                "Type": "S3TableSnapshot",
-                "Uri": "s3://bucket/flight-delay-737-dep15/v0.0.2/",
-                "SnapshotId": "7281539204561098345",
-            },
-        ]
+        inputs = [{"Type": "FeatureGroup", "Arn": FEATURE_GROUP_ARN}]
         log_lineage_inputs("m-123", lineage_inputs=inputs)
 
         mock_client.log_model_artifact.assert_called_once()
@@ -87,10 +83,43 @@ class TestLogLineageInputs:
         _, captured = _mock_client(mock_client_cls)
 
         entry = {
-            "Type": "S3TableSnapshot",
-            "Uri": "s3://bucket/table/",
-            "SnapshotId": "7281539204561098345",
+            "Type": "FeatureGroup",
+            "Arn": FEATURE_GROUP_ARN,
             "Name": "flight-delay",
+        }
+        log_lineage_inputs("m-123", lineage_inputs=[entry])
+
+        assert captured["content"]["Inputs"] == [entry]
+
+    @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
+    def test_feature_group_snapshot_id_is_written(self, mock_client_cls):
+        """An Iceberg feature group's snapshot ID reaches the artifact for the server to record."""
+        _, captured = _mock_client(mock_client_cls)
+
+        entry = {"Type": "FeatureGroup", "Arn": FEATURE_GROUP_ARN, "SnapshotId": "7281539204561098345"}
+        log_lineage_inputs("m-123", lineage_inputs=[entry])
+
+        assert captured["content"]["Inputs"] == [entry]
+
+    @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
+    def test_hub_dataset_is_written(self, mock_client_cls):
+        """A versioned hub dataset ARN reaches the artifact unchanged."""
+        _, captured = _mock_client(mock_client_cls)
+
+        entry = {"Type": "HubDataSet", "Arn": HUB_DATASET_ARN}
+        log_lineage_inputs("m-123", lineage_inputs=[entry])
+
+        assert captured["content"]["Inputs"] == [entry]
+
+    @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
+    def test_hub_dataset_query_string_is_written(self, mock_client_cls):
+        """The query that built the dataset reaches the artifact for the server to record."""
+        _, captured = _mock_client(mock_client_cls)
+
+        entry = {
+            "Type": "HubDataSet",
+            "Arn": HUB_DATASET_ARN,
+            "QueryString": 'SELECT * FROM "fg_a" JOIN "fg_b" USING (flight_id)',
         }
         log_lineage_inputs("m-123", lineage_inputs=[entry])
 
@@ -124,8 +153,8 @@ class TestInputsValidation:
             ([{"Type": "FeatureGrpup", "Arn": FEATURE_GROUP_ARN}], ValueError),
             ([{"Type": "FeatureGroup"}], ValueError),
             ([{"Type": "FeatureGroup", "Arn": ""}], ValueError),
-            ([{"Type": "S3TableSnapshot"}], ValueError),
-            ([{"Type": "S3TableSnapshot", "Uri": ""}], ValueError),
+            ([{"Type": "HubDataSet"}], ValueError),
+            ([{"Type": "HubDataSet", "Arn": ""}], ValueError),
         ],
     )
     @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
@@ -136,6 +165,57 @@ class TestInputsValidation:
             log_lineage_inputs("m-123", lineage_inputs=bad)
 
         mock_client.log_model_artifact.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "arn",
+        [
+            HUB_DATASET_ARN.rsplit("/", 1)[0],  # no version
+            HUB_DATASET_ARN.replace("/DataSet/", "/Model/"),  # another hub content type
+            FEATURE_GROUP_ARN,
+            "s3://bucket/flight-delay-737-dep15/",
+        ],
+    )
+    @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
+    def test_unversioned_hub_dataset_arn_warns_but_is_written(self, mock_client_cls, caplog, arn):
+        """It would get no lineage, so the caller is told -- without failing the script."""
+        _, captured = _mock_client(mock_client_cls)
+
+        entry = {"Type": "HubDataSet", "Arn": arn}
+        with caplog.at_level("WARNING"):
+            log_lineage_inputs("m-123", lineage_inputs=[entry])
+
+        assert captured["content"]["Inputs"] == [entry]
+        assert "not a versioned hub dataset ARN" in caplog.text
+
+    @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
+    def test_feature_group_and_hub_dataset_together_warn_but_are_written(self, mock_client_cls, caplog):
+        """A model trains on feature groups or on a hub dataset, so a mix is ambiguous."""
+        _, captured = _mock_client(mock_client_cls)
+
+        inputs = [
+            {"Type": "FeatureGroup", "Arn": FEATURE_GROUP_ARN},
+            {"Type": "HubDataSet", "Arn": HUB_DATASET_ARN},
+        ]
+        with caplog.at_level("WARNING"):
+            log_lineage_inputs("m-123", lineage_inputs=inputs)
+
+        assert captured["content"] == {"Inputs": inputs}
+        assert "mixes FeatureGroup and HubDataSet" in caplog.text
+
+    @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
+    def test_several_inputs_of_one_type_are_accepted(self, mock_client_cls, caplog):
+        """Only mixing types warns; several feature groups are a normal declaration."""
+        _, captured = _mock_client(mock_client_cls)
+
+        inputs = [
+            {"Type": "FeatureGroup", "Arn": FEATURE_GROUP_ARN},
+            {"Type": "FeatureGroup", "Arn": FEATURE_GROUP_ARN.replace("v0-0-2", "v0-0-3")},
+        ]
+        with caplog.at_level("WARNING"):
+            log_lineage_inputs("m-123", lineage_inputs=inputs)
+
+        assert captured["content"] == {"Inputs": inputs}
+        assert not caplog.records
 
     @pytest.mark.parametrize(
         "envelope",
@@ -166,7 +246,7 @@ class TestInputsValidation:
             )
 
         assert "FeatureGroup" in str(excinfo.value)
-        assert "S3TableSnapshot" in str(excinfo.value)
+        assert "S3TableSnapshot" not in str(excinfo.value)
         mock_client.log_model_artifact.assert_not_called()
 
     @patch("sagemaker_mlflow.sagemaker_model_registry.lineage_inputs.mlflow.MlflowClient")
