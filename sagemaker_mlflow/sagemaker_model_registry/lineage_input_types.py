@@ -22,25 +22,36 @@ class FeatureGroupInput(TypedDict, total=False):
     """A SageMaker Feature Store feature group that fed the model.
 
     Resolves server-side to the feature group's auto-created lineage Context.
+
+    ``SnapshotId`` is optional: the Iceberg snapshot of the feature group's
+    offline store that the model trained on, which pins the data version. Only
+    an offline store in the Iceberg table format has snapshots, so omit it for
+    a Glue-format or online-only feature group.
     """
 
     Type: Literal["FeatureGroup"]
     Arn: str
+    SnapshotId: str
 
 
-class S3TableSnapshotInput(TypedDict, total=False):
-    """A point-in-time S3 table snapshot that fed the model.
+class HubDataSetInput(TypedDict, total=False):
+    """A SageMaker hub dataset that fed the model.
 
-    Resolves server-side to a lineage Artifact, created if absent.
+    ``Arn`` is the versioned hub content ARN,
+    ``arn:...:hub-content/<hub>/DataSet/<name>/<version>``. A hub dataset
+    version never changes, so the version in the ARN already pins the data.
+    Resolves server-side to the lineage node the hub dataset already has.
+
+    ``QueryString`` is optional: the Athena query that built the dataset from its
+    feature groups, so the dataset can be reproduced.
     """
 
-    Type: Literal["S3TableSnapshot"]
-    Uri: str
-    SnapshotId: str
-    Name: str
+    Type: Literal["HubDataSet"]
+    Arn: str
+    QueryString: str
 
 
-LineageInput = Union[FeatureGroupInput, S3TableSnapshotInput]
+LineageInput = Union[FeatureGroupInput, HubDataSetInput]
 
 # What ``log_lineage_inputs`` accepts: the inputs directly, as a list.
 LineageInputs = List[LineageInput]
@@ -49,11 +60,11 @@ LineageInputs = List[LineageInput]
 # Anything else is rejected at the call site rather than written to the artifact
 # and silently dropped server-side, where the customer never sees the warning.
 # Adding a type here requires a client release alongside the server resolver.
-SUPPORTED_INPUT_TYPES = frozenset({"FeatureGroup", "S3TableSnapshot"})
+SUPPORTED_INPUT_TYPES = frozenset({"FeatureGroup", "HubDataSet"})
 
 # The identifier each type is resolved by. A declaration missing it would be
 # skipped server-side for the same invisible reason.
 REQUIRED_INPUT_FIELDS = {
     "FeatureGroup": "Arn",
-    "S3TableSnapshot": "Uri",
+    "HubDataSet": "Arn",
 }
