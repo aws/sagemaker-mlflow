@@ -125,7 +125,7 @@ class AuthBoto(AuthBase):
         method = r.method
         headers = r.headers
         request_body = r.body
-        connection_header = headers["Connection"]
+        connection_header = headers.get("Connection")
 
         body_bytes = request_body or b""
         if isinstance(body_bytes, str):
@@ -148,7 +148,8 @@ class AuthBoto(AuthBase):
 
         # Adding back in the connection header.
         final_headers = aws_request.headers
-        final_headers["Connection"] = connection_header
+        if connection_header is not None:
+            final_headers["Connection"] = connection_header
         final_request = AWSRequest(method=method, url=url, data=r.body, headers=final_headers)
 
         return final_request.prepare()
