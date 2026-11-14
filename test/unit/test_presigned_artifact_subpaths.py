@@ -9,10 +9,8 @@ from sagemaker_mlflow.s3_presigned_artifact_repo import S3PresignedArtifactRepos
 @pytest.mark.parametrize("artifact_path", [None, "weights"])
 def test_presigned_upload_keeps_repository_subpath(monkeypatch, tmp_path, owner, artifact_path):
     monkeypatch.setenv("SAGEMAKER_PRESIGNED_URL_UPLOAD_ENABLED", "true")
-    repo = S3PresignedArtifactRepository(
-        f"s3://bucket/{owner}/artifacts/subdir",
-        tracking_uri="arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/test",
-    )
+    repo = S3PresignedArtifactRepository(f"s3://bucket/{owner}/artifacts/subdir")
+    repo.tracking_uri = "arn:aws:sagemaker:us-west-2:000000000000:mlflow-tracking-server/test"
     response = Mock(ok=True)
     response.json.return_value = {"presigned_url": "https://example.com/upload"}
     request_url = Mock(return_value=response)
