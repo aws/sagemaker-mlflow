@@ -142,6 +142,12 @@ class S3PresignedArtifactRepository(S3ArtifactRepository):
         Must match how S3ArtifactRepository.log_artifact builds the S3 key:
         artifact_path (if any) + basename of local_file.
         """
+        parts = urlparse(self.artifact_uri).path.strip("/").split("/")
+        for index in range(len(parts) - 1, -1, -1):
+            if parts[index] == "artifacts":
+                artifact_path = posixpath.join(*parts[index + 1 :], artifact_path or "")
+                break
+
         filename = os.path.basename(local_file)
         if artifact_path:
             return posixpath.join(artifact_path, filename)
