@@ -11,6 +11,7 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
+from datetime import datetime
 import threading
 import time
 from typing import Optional, Dict, Any
@@ -57,6 +58,9 @@ class CredentialCache:
             ttl_seconds (int): Time-to-live in seconds
         """
         expires_at = time.time() + ttl_seconds
+        expiration = credentials.get("Expiration")
+        if isinstance(expiration, datetime):
+            expires_at = min(expires_at, expiration.timestamp())
 
         with self._lock:
             self._cache[role_arn] = {"credentials": credentials, "expires_at": expires_at}
