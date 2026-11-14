@@ -12,6 +12,7 @@
 # language governing permissions and limitations under the License.
 
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 import boto3
 from requests.auth import AuthBase
 from requests.models import PreparedRequest
@@ -140,7 +141,8 @@ class AuthBoto(AuthBase):
 
         # Mlflow encodes spaces as +, Auth prefers %20
         if method == "GET" or method == "DELETE":
-            url = (url or "").replace("+", "%20")
+            parsed_url = urlsplit(url or "")
+            url = urlunsplit(parsed_url._replace(query=parsed_url.query.replace("+", "%20")))
 
         # Creating a new request with the SigV4 signed headers.
         aws_request = AWSRequest(method=method, url=url, data=r.body, headers=headers)
