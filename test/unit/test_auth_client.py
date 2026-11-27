@@ -190,6 +190,33 @@ class InheritedRoleSurfaceTest(TestCase):
         self.assertEqual(kwargs["json"], {"workspace": "default", "name": "viewers"})
 
 
+class ImportOrderTest(TestCase):
+    """Importing mlflow first must not break the client (circular import in MLflow)."""
+
+    def _run(self, code):
+        import subprocess
+        import sys
+
+        return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+
+    def test_client_usable_when_mlflow_is_imported_first(self):
+        result = self._run(
+            "import mlflow\n"
+            "from sagemaker_mlflow import SageMakerMlflowAuthClient\n"
+            f"SageMakerMlflowAuthClient(tracking_uri={TEST_APP_ARN!r})\n"
+            "print('ok')\n"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr[-500:])
+        self.assertIn("ok", result.stdout)
+
+    def test_plain_import_does_not_load_auth_client(self):
+        result = self._run(
+            "import sys\nimport sagemaker_mlflow\nprint('sagemaker_mlflow.auth_client' in sys.modules)\n"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr[-500:])
+        self.assertEqual(result.stdout.strip(), "False")
+
+
 class SkinnyDegradationTest(TestCase):
     def test_helpful_error_when_auth_server_missing(self):
         import sagemaker_mlflow.auth_client as ac

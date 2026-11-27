@@ -53,26 +53,17 @@ from sagemaker_mlflow.host_creds import get_host_creds
 
 logger = logging.getLogger(__name__)
 
-# The MLflow auth server package (client + entities + routes) is only in full
-# mlflow, not mlflow-skinny. Import it lazily so `import sagemaker_mlflow` keeps
-# working under skinny; the helpful error is raised at construction time.
+# The MLflow auth server package (client + entities + routes) needs full mlflow
+# plus Flask-WTF, which is the ``sagemaker-mlflow[auth]`` extra. It is not
+# available under mlflow-skinny, so the import is guarded and the helpful error
+# is raised at construction time.
 #
-# TODO: this import runs at MODULE LOAD, which is not actually lazy. In some full
-# mlflow installs (observed with mlflow 3.13.0) importing it here triggers a
-# circular import inside mlflow itself
-# (mlflow.server.__init__ -> handlers -> gateway.budget -> store ->
-# mlflow.genai.datasets -> mlflow.tracking.get_tracking_uri) when mlflow.server is
-# pulled in before mlflow.tracking has finished initializing. The ImportError is
-# then miscaptured below as "auth-server missing", surfacing the misleading
-# "install sagemaker-mlflow[auth]" error even though [auth] IS installed.
-# Fix: defer this import into _require_auth_server() (first-use), binding
-# _AuthServiceClient at construction time instead of module-import time, so a
-# partially-initialized mlflow at import time cannot wedge the subclass. Keep the
-# skinny-vs-full ImportError handling, just move it to first use. Until then,
-# consumers hitting the cycle can warm up mlflow first:
-#     import mlflow, mlflow.tracking, mlflow.store.tracking.dbmodels.models
-#     import mlflow.server.auth.client
-# (The Brazil build / unit tests import in a clean order and are unaffected.)
+# This module must not be imported while mlflow is still initializing. MLflow
+# imports ``sagemaker_mlflow`` during plugin loading, and importing
+# ``mlflow.server.auth.client`` at that point hits a circular import inside MLflow
+# (observed with mlflow 3.13.0 and 3.16.0), which would be recorded below as a
+# missing auth server. ``sagemaker_mlflow/__init__.py`` therefore re-exports
+# ``SageMakerMlflowAuthClient`` lazily, so this module loads on first use.
 try:
     from mlflow.server.auth.client import AuthServiceClient as _AuthServiceClient
 
