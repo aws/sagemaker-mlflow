@@ -24,7 +24,7 @@ pip install sagemaker-mlflow[full]
 > under skinny. The access-control admin client,
 > [`SageMakerMlflowAuthClient`](#access-control-admin-client), is the exception:
 > it extends MLflow's auth-server package, which is only in full `mlflow`, so it
-> requires `sagemaker-mlflow[full]`.
+> requires `sagemaker-mlflow[auth]`.
 
 To install from source:
 ```
@@ -76,11 +76,11 @@ Presigned uploads for MLflow 3 logged-model artifacts (`log_model`) require both
 
 ## Access control admin client
 
-> **Requires `sagemaker-mlflow[full]`.** `SageMakerMlflowAuthClient` extends
+> **Requires `sagemaker-mlflow[auth]`.** `SageMakerMlflowAuthClient` extends
 > `mlflow.server.auth.client.AuthServiceClient`, which ships only with full
 > `mlflow` (not `mlflow-skinny`). Importing `sagemaker_mlflow` stays safe under
 > skinny; constructing the client without the auth-server package raises a clear
-> error pointing you to `pip install 'sagemaker-mlflow[full]'`.
+> error pointing you to `pip install 'sagemaker-mlflow[auth]'`.
 
 For SageMaker MLflow apps with fine-grained access control (FGAC) enabled,
 `SageMakerMlflowAuthClient` is the admin client for managing MLflow RBAC. It is
@@ -126,7 +126,7 @@ client.assign_role("arn:aws:iam::123456789012:role/AliceDSRole", role.id)
 ### setup.py
 
 `setup.py` Contains the primary entry points for the sdk. 
-`install_requires` Installs `mlflow-skinny` (lightweight) by default. The `[full]` extra installs the full `mlflow` package, which is required by `SageMakerMlflowAuthClient` (it extends MLflow's auth-server package).
+`install_requires` Installs `mlflow-skinny` (lightweight) by default. The `[full]` extra installs the full `mlflow` package. The `[auth]` extra installs `mlflow[auth]` (full `mlflow` plus Flask-WTF), which is required by `SageMakerMlflowAuthClient` because it extends MLflow's auth-server package.
 `entry_points` Contains the entry points for the sdk. See https://mlflow.org/docs/latest/plugins.html#defining-a-plugin
 for more details.
 

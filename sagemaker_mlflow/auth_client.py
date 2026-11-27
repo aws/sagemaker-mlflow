@@ -39,7 +39,7 @@ with the full ``mlflow`` auth-server package and is **not** present in
 ``mlflow-skinny`` (this package's default dependency). Importing
 ``sagemaker_mlflow`` stays safe under skinny; constructing
 :class:`SageMakerMlflowAuthClient` without the auth server installed raises a
-clear :class:`MlflowSageMakerException` pointing at the ``[full]`` extra.
+clear :class:`MlflowSageMakerException` pointing at the ``[auth]`` extra.
 """
 
 import logging
@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 # mlflow.genai.datasets -> mlflow.tracking.get_tracking_uri) when mlflow.server is
 # pulled in before mlflow.tracking has finished initializing. The ImportError is
 # then miscaptured below as "auth-server missing", surfacing the misleading
-# "install sagemaker-mlflow[full]" error even though [full] IS installed.
+# "install sagemaker-mlflow[auth]" error even though [auth] IS installed.
 # Fix: defer this import into _require_auth_server() (first-use), binding
 # _AuthServiceClient at construction time instead of module-import time, so a
 # partially-initialized mlflow at import time cannot wedge the subclass. Keep the
@@ -84,7 +84,7 @@ except ImportError as exc:  # pragma: no cover - exercised only under skinny
 _AUTH_SERVER_MISSING_MESSAGE = (
     "SageMakerMlflowAuthClient requires MLflow's auth-server package "
     "(mlflow.server.auth), which is not included in mlflow-skinny. Install the "
-    "full dependency set with: pip install 'sagemaker-mlflow[full]'"
+    "full dependency set with: pip install 'sagemaker-mlflow[auth]'"
 )
 
 # Mirror of the server-side principal-ARN validation
@@ -174,7 +174,7 @@ class SageMakerMlflowAuthClient(_AuthServiceClient):
 
         Raises:
             MlflowSageMakerException: if the MLflow auth-server package is not
-                installed (install ``sagemaker-mlflow[full]``), or if no
+                installed (install ``sagemaker-mlflow[auth]``), or if no
                 tracking URI can be resolved.
         """
         _require_auth_server()

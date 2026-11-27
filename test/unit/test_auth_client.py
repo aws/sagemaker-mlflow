@@ -197,7 +197,7 @@ class SkinnyDegradationTest(TestCase):
         with mock.patch.object(ac, "_AUTH_SERVER_IMPORT_ERROR", ImportError("no module")):
             with self.assertRaises(MlflowSageMakerException) as ctx:
                 SageMakerMlflowAuthClient(tracking_uri=TEST_APP_ARN)
-        self.assertIn("sagemaker-mlflow[full]", str(ctx.exception))
+        self.assertIn("sagemaker-mlflow[auth]", str(ctx.exception))
 
 
 if __name__ == "__main__":
